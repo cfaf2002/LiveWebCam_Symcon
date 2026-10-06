@@ -66,7 +66,10 @@
             "not a valid http(s) address": "keine gültige http(s)-Adresse",
             "access data in the address only with „load via Symcon“": "Zugangsdaten in der Adresse nur mit „Über Symcon laden“",
             "access data in the address are only possible for still images": "Zugangsdaten in der Adresse sind nur bei Standbildern möglich",
-            "response is not an image": "Antwort ist kein Bild"
+            "response is not an image": "Antwort ist kein Bild",
+            "PeerTube video or live stream (e.g. livespotting)": "PeerTube-Video oder Livestream (z. B. livespotting)",
+            "For webcam pages, do not enter the address of the web page itself but the link to the player (YouTube, PeerTube or the provider’s embed link) – otherwise the whole web page appears in the tile.": "Bei Webcam-Seiten nicht die Adresse der Webseite selbst eintragen, sondern den Link zum Player (YouTube, PeerTube oder Einbettungs-Link des Anbieters) – sonst erscheint die ganze Webseite in der Kachel.",
+            "no PeerTube video found in the address": "in der Adresse wurde kein PeerTube-Video gefunden"
         }
     }
 }

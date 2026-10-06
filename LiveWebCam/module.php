@@ -26,6 +26,7 @@ class LiveWebCam extends IPSModuleStrict
     private const TYPE_IMAGE = 4;
     private const TYPE_MJPEG = 5;
     private const TYPE_VIDEO = 6;
+    private const TYPE_PEERTUBE = 7;
 
     // Laden über Symcon (Spalte „Über Symcon laden“)
     private const PROXY_AUTO = 0;
@@ -291,7 +292,7 @@ class LiveWebCam extends IPSModuleStrict
         [$cameras, $errors] = $this->Cameras();
         $list = [];
         foreach ($cameras as $cam) {
-            $list[] = ['name' => $cam['name'], 'kind' => $cam['kind'], 'src' => $cam['src'], 'link' => $cam['link']];
+            $list[] = ['name' => $cam['name'], 'kind' => $cam['kind'], 'src' => $cam['src'], 'auto' => $cam['auto'], 'link' => $cam['link']];
         }
         $error = '';
         if ($cameras === []) {
@@ -350,10 +351,7 @@ class LiveWebCam extends IPSModuleStrict
 
     private function AutoplaySrc(array $cam): string
     {
-        if ($cam['kind'] === 'youtube' && $this->ReadPropertyBoolean('Autoplay')) {
-            return $cam['src'] . '&autoplay=1&mute=1';
-        }
-        return $cam['src'];
+        return $this->ReadPropertyBoolean('Autoplay') ? $cam['auto'] : $cam['src'];
     }
 
     // ------------------------------------------------------------------
@@ -387,12 +385,13 @@ class LiveWebCam extends IPSModuleStrict
                 continue;
             }
             $result['name'] = mb_substr($name, 0, 60);
+            $result['auto'] ??= $result['src'];
             $cameras[] = $result;
         }
         // Adresse des WebHooks erst jetzt einsetzen: Nummer = Position in der Liste der aktiven Kameras
         foreach ($cameras as $i => $cam) {
             if ($cam['proxy']) {
-                $cameras[$i]['src'] = '/hook/webcam' . $this->InstanceID . '?cam=' . $i . '&t=' . $this->ReadAttributeString('Token');
+                $cameras[$i]['src'] = $cameras[$i]['auto'] = '/hook/webcam' . $this->InstanceID . '?cam=' . $i . '&t=' . $this->ReadAttributeString('Token');
             }
         }
         return [$cameras, $errors];
@@ -401,7 +400,8 @@ class LiveWebCam extends IPSModuleStrict
     /**
      * Prüft eine Quelle und baut die Adressen für Kachel und Browser.
      *
-     * @return array{kind: string, src: string, link: string, proxy: bool, url: string}|string Fehlermeldung als String
+     * @return array{kind: string, src: string, auto?: string, link: string, proxy: bool, url: string}|string Fehlermeldung als String
+     *         auto = Adresse mit automatischem Start (stumm), sonst wie src
      */
     private function Resolve(string $source, int $type, int $proxyMode): array|string
     {
@@ -422,9 +422,11 @@ class LiveWebCam extends IPSModuleStrict
             if ($id === null) {
                 return $this->Translate('no YouTube video found in the address');
             }
+            $src = $host . '/embed/' . $id . '?playsinline=1&rel=0';
             return [
                 'kind'  => 'youtube',
-                'src'   => $host . '/embed/' . $id . '?playsinline=1&rel=0',
+                'src'   => $src,
+                'auto'  => $src . '&autoplay=1&mute=1',
                 'link'  => 'https://www.youtube.com/watch?v=' . $id,
                 'proxy' => false,
                 'url'   => '',
@@ -435,10 +437,28 @@ class LiveWebCam extends IPSModuleStrict
             if ($channel === null) {
                 return $this->Translate('please enter the channel ID (UC…) – a @name cannot be resolved');
             }
+            $src = $host . '/embed/live_stream?channel=' . $channel . '&playsinline=1&rel=0';
             return [
                 'kind'  => 'youtube',
-                'src'   => $host . '/embed/live_stream?channel=' . $channel . '&playsinline=1&rel=0',
+                'src'   => $src,
+                'auto'  => $src . '&autoplay=1&mute=1',
                 'link'  => 'https://www.youtube.com/channel/' . $channel . '/live',
+                'proxy' => false,
+                'url'   => '',
+            ];
+        }
+        if ($type === self::TYPE_PEERTUBE) {
+            $video = self::PeerTubeVideo($source);
+            if ($video === null) {
+                return $this->Translate('no PeerTube video found in the address');
+            }
+            // Nur der Player: ohne Titelzeile, Warnhinweis und PeerTube-Logo; p2p=0 – der Browser lädt nur, lädt aber nichts an andere hoch
+            $src = $video['origin'] . '/videos/embed/' . $video['id'] . '?title=0&warningTitle=0&peertubeLink=0&p2p=0';
+            return [
+                'kind'  => 'peertube',
+                'src'   => $src,
+                'auto'  => $src . '&autoplay=1&muted=1',
+                'link'  => $video['origin'] . '/w/' . $video['id'],
                 'proxy' => false,
                 'url'   => '',
             ];
@@ -484,6 +504,9 @@ class LiveWebCam extends IPSModuleStrict
         if (self::YouTubeId($source) !== null) {
             return self::TYPE_YOUTUBE;
         }
+        if (self::PeerTubeVideo($source) !== null) {
+            return self::TYPE_PEERTUBE;
+        }
         $path = strtolower((string) parse_url($source, PHP_URL_PATH));
         $query = strtolower((string) parse_url($source, PHP_URL_QUERY));
         if (preg_match('/\.(jpe?g|png|gif|webp)$/', $path) || preg_match('/snapshot|snap\.cgi|image\.cgi|still/', $path . '?' . $query)) {
@@ -519,6 +542,30 @@ class LiveWebCam extends IPSModuleStrict
             $id = $m[2];
         }
         return is_string($id) && preg_match('/^[A-Za-z0-9_-]{11}$/', $id) ? $id : null;
+    }
+
+    /**
+     * PeerTube-Video aus Watch-, Kurz- oder Embed-Adresse (…/w/<id>, …/videos/watch/<id>, …/videos/embed/<id>).
+     * Erkannt wird am Aufbau der Adresse, nicht am Server – PeerTube läuft auf vielen Servern (z. B. livespotting).
+     *
+     * @return array{origin: string, id: string}|null
+     */
+    private static function PeerTubeVideo(string $source): ?array
+    {
+        $url = self::ParseUrl($source);
+        if ($url === null || $url['user'] !== '' || $url['pass'] !== '') {
+            return null;
+        }
+        $path = (string) parse_url($source, PHP_URL_PATH);
+        $id = '(?:[0-9A-Za-z]{22}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
+        if (!preg_match('#^/(?:w|videos/watch|videos/embed)/(' . $id . ')/?$#', $path, $m)) {
+            return null;
+        }
+        $port = parse_url($source, PHP_URL_PORT);
+        return [
+            'origin' => $url['scheme'] . '://' . strtolower((string) parse_url($source, PHP_URL_HOST)) . ($port ? ':' . $port : ''),
+            'id'     => $m[1],
+        ];
     }
 
     /** Kanal-ID (UC…) aus ID, /channel/-Adresse oder live_stream?channel=. */

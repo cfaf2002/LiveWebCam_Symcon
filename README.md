@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.0 (Build 3)](https://img.shields.io/badge/Modul--Version-1.0_(Build_3)-informational.svg)](library.json)
+[![Modul-Version 1.1 (Build 4)](https://img.shields.io/badge/Modul--Version-1.1_(Build_4)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -39,6 +39,7 @@ Autor: Armin Frohwerk · Lizenz: MIT
 - Quellen:
   - **YouTube-Video oder Livestream** – Link (`watch?v=`, `youtu.be/`, `/live/`, `/embed/`) oder die 11-stellige Video-ID
   - **YouTube-Kanal** – Kanal-ID (`UC…`): zeigt immer den aktuellen Livestream des Kanals, auch wenn der Betreiber den Stream neu startet
+  - **PeerTube-Video oder Livestream** – normaler PeerTube-Link (`…/w/<id>`), z. B. von livespotting; das Modul baut daraus den reinen Player
   - **Player-Seite** – Einbettungs-Link eines Webcam-Anbieters (iframe)
   - **Standbild** (JPG/PNG/GIF/WebP) – wird in einstellbarem Takt neu geladen
   - **MJPEG-Stream** – z. B. von IP-Kameras im Heimnetz
@@ -80,16 +81,23 @@ Danach eine Instanz **LiveWebCam** anlegen.
 | Adresse, Video-ID oder Kanal-ID | die Quelle |
 | Über Symcon laden | nur für Standbilder: Automatisch (bei `http` oder Zugangsdaten), Immer, Nie |
 
-**Beispiel – Kugelbake Cuxhaven (YouTube-Livestream):**
+**Wichtig:** Nicht die Adresse der Webseite eintragen, auf der die Kamera zu sehen ist (z. B. die Seite der Kurverwaltung), sondern den Link zum **Player** – sonst erscheint die ganze Webseite mit Menü in der Kachel.
+
+**Beispiel – Webcams in Cuxhaven** (Betreiber livespotting, auch als PeerTube- bzw. YouTube-Stream):
 
 | Name | Art | Adresse |
 | :-- | :-- | :-- |
-| Kugelbake | Automatisch erkennen | `https://www.youtube.com/watch?v=nQs-B8SNcWQ` |
+| Kugelbake | Automatisch erkennen | `https://peertube.livespotting.com/w/xyBqKQEAeS6fJgFa91B9ox` |
+| Duhnen Rettungsstation | Automatisch erkennen | `https://peertube.livespotting.com/w/qLZ7kfvg1PJjGPXDsBv9iy` |
+| Sahlenburg | Automatisch erkennen | `https://peertube.livespotting.com/w/pQF6LXtAFguUDK8sZfmjsz` |
+| Altenbruch | Automatisch erkennen | `https://peertube.livespotting.com/w/7no6Tm9JDjyDKJKBMYGFyE` |
+| Kugelbake (YouTube) | Automatisch erkennen | `https://www.youtube.com/watch?v=nQs-B8SNcWQ` |
 
-Startet der Betreiber den Livestream neu, bekommt er eine neue Video-ID. Dann entweder den neuen Link eintragen oder – robuster – Art „YouTube-Kanal“ mit der Kanal-ID (`UC…`, zu finden in der Kanal-Adresse oder unter „Kanal teilen → Kanal-ID kopieren“). Ein `@Name` lässt sich ohne YouTube-Schlüssel nicht auflösen.
+Startet der Betreiber den Livestream neu, bekommt er eine neue Video-ID. Dann entweder den neuen Link eintragen oder – robuster – Art „YouTube-Kanal“ mit der Kanal-ID (`UC…`, zu finden in der Kanal-Adresse oder unter „Kanal teilen → Kanal-ID kopieren“). Ein `@Name` lässt sich ohne YouTube-Schlüssel nicht auflösen. PeerTube-Livestreams behalten dagegen ihre Adresse.
 
 **Hinweise:**
-- Bei Webcam-Anbietern den **Einbettungs-Link** aus „Teilen/Einbetten“ verwenden, nicht die normale Seite – viele Seiten verbieten das Einbetten.
+- Bei Webcam-Anbietern den **Einbettungs-Link** aus „Teilen/Einbetten“ verwenden, nicht die normale Seite – viele Seiten verbieten das Einbetten. Bei PeerTube und YouTube genügt der normale Link, das Modul baut den Player-Link selbst.
+- PeerTube wird ohne Titelzeile und mit `p2p=0` eingebettet: Der Browser lädt den Stream nur herunter und verteilt ihn nicht an andere Zuschauer weiter.
 - Spielt ein YouTube-Kanal im Datenschutzmodus nicht, den Schalter „YouTube im erweiterten Datenschutzmodus“ ausschalten.
 - Kameras mit `http` in einer Visualisierung über `https` (z. B. Symcon Connect) blockiert der Browser. Standbilder deshalb über Symcon laden; MJPEG und Video brauchen dafür eine `https`-Adresse.
 - Ungültige Einträge stehen mit Grund oben unter **Aktionen**; die übrigen Kameras laufen weiter.
@@ -162,6 +170,7 @@ Der Ladetest prüft neben Formular, Kachel und Farbschema die Erkennung aller Qu
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.1 | 4 | 06.10.2026 | PeerTube (z. B. livespotting): normaler Link wird automatisch zum reinen Player (ohne Titel, ohne P2P); Hinweis im Formular, den Player-Link statt der Webseite einzutragen; Beispiele für die Webcams in Cuxhaven |
 | 1.0 | 3 | 06.10.2026 | Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt |
 | 1.0 | 2 | 06.10.2026 | Modulliste: Hersteller „Webcam“ statt „(Gerät)“, keine zusätzlichen Suchbegriffe mehr – das Modul erscheint nur noch einmal als „LiveWebCam“ |
 | 1.0 | 1 | 06.10.2026 | Erste Version |

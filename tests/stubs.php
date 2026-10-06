@@ -133,12 +133,14 @@ foreach (glob(__DIR__ . '/../*/module.json') as $moduleJson) {
             ['Active' => true, 'Name' => 'MJPEG', 'Type' => 0, 'Source' => 'https://example.org/video.mjpg', 'Proxy' => 0],
             ['Active' => true, 'Name' => 'HLS', 'Type' => 0, 'Source' => 'https://example.org/live/index.m3u8', 'Proxy' => 0],
             ['Active' => true, 'Name' => 'Anbieter', 'Type' => 0, 'Source' => 'https://player.example.org/embed?id=1', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'PeerTube', 'Type' => 0, 'Source' => 'https://peertube.livespotting.com/w/qLZ7kfvg1PJjGPXDsBv9iy', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'Wiki', 'Type' => 0, 'Source' => 'https://de.wikipedia.org/w/index.php?title=Kugelbake', 'Proxy' => 0],
             ['Active' => false, 'Name' => 'Aus', 'Type' => 0, 'Source' => 'https://example.org/x.jpg', 'Proxy' => 0],
         ]);
         ok(IPS_GetInstance($id)['InstanceStatus'] === 102, 'Mit Kameras Status 102');
         $data = tileData($id);
         $kinds = array_column($data['cams'], 'kind');
-        ok($kinds === ['youtube', 'youtube', 'youtube', 'image', 'image', 'mjpeg', 'video', 'page'], 'Arten erkannt: ' . implode(', ', $kinds));
+        ok($kinds === ['youtube', 'youtube', 'youtube', 'image', 'image', 'mjpeg', 'video', 'page', 'peertube', 'page'], 'Arten erkannt: ' . implode(', ', $kinds));
         ok(str_starts_with($data['cams'][0]['src'], 'https://www.youtube-nocookie.com/embed/nQs-B8SNcWQ?'), 'YouTube im Datenschutzmodus');
         ok(str_contains($data['cams'][1]['src'], 'live_stream?channel=UC1234567890abcdefghijkl'), 'Kanal → aktueller Livestream');
         ok(str_contains($data['cams'][2]['src'], '/embed/nQs-B8SNcWQ'), 'youtu.be-Link');
@@ -148,7 +150,12 @@ foreach (glob(__DIR__ . '/../*/module.json') as $moduleJson) {
         ok(!str_contains(json_encode($data), 'geheim') && !str_contains($tile . WEBCAM_GetVisualizationTile($id), 'geheim'), 'Zugangsdaten kommen nie in der Kachel an');
         ok($garden['link'] === '', 'Kein Browser-Link bei Zugangsdaten');
         ok(in_array('/hook/webcam' . $id, $GLOBALS['registeredHooks'] ?? [], true), 'WebHook registriert');
-        ok(count($data['cams']) === 8, 'Inaktive Kamera ausgeblendet');
+        ok(count($data['cams']) === 10, 'Inaktive Kamera ausgeblendet');
+        $peertube = $data['cams'][8];
+        ok($peertube['src'] === 'https://peertube.livespotting.com/videos/embed/qLZ7kfvg1PJjGPXDsBv9iy?title=0&warningTitle=0&peertubeLink=0&p2p=0', 'PeerTube-Link → Einbettungs-Player');
+        ok(str_ends_with($peertube['auto'], '&autoplay=1&muted=1') && str_ends_with($data['cams'][0]['auto'], '&autoplay=1&mute=1'), 'Autostart-Adressen für YouTube und PeerTube');
+        ok($peertube['link'] === 'https://peertube.livespotting.com/w/qLZ7kfvg1PJjGPXDsBv9iy', 'PeerTube: Link zum Öffnen im Browser');
+        ok($data['cams'][9]['src'] === 'https://de.wikipedia.org/w/index.php?title=Kugelbake', 'Andere /w/-Adressen bleiben Webseiten');
 
         // Abgelehnte Einträge
         setCameras($id, [
@@ -159,6 +166,7 @@ foreach (glob(__DIR__ . '/../*/module.json') as $moduleJson) {
             ['Active' => true, 'Name' => 'cred', 'Type' => 3, 'Source' => 'https://a:b@x.org/', 'Proxy' => 0],
             ['Active' => true, 'Name' => 'never', 'Type' => 4, 'Source' => 'http://a:b@x.org/s.jpg', 'Proxy' => 2],
             ['Active' => true, 'Name' => 'empty', 'Type' => 0, 'Source' => '', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'nopt', 'Type' => 7, 'Source' => 'https://peertube.example.org/w/p/abc', 'Proxy' => 0],
         ]);
         ok(IPS_GetInstance($id)['InstanceStatus'] === 201, 'Ungültige Einträge: Status 201');
         ok(count(tileData($id)['cams']) === 1, 'Nur der gültige Eintrag bleibt (javascript:, Anführungszeichen, @Name, Zugangsdaten abgelehnt)');

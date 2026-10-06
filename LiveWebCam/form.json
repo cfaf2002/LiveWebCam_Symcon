@@ -57,6 +57,10 @@
                                         "value": 2
                                     },
                                     {
+                                        "caption": "PeerTube video or live stream (e.g. livespotting)",
+                                        "value": 7
+                                    },
+                                    {
                                         "caption": "Player page (embed link)",
                                         "value": 3
                                     },
@@ -108,6 +112,10 @@
                             }
                         }
                     ]
+                },
+                {
+                    "type": "Label",
+                    "caption": "For webcam pages, do not enter the address of the web page itself but the link to the player (YouTube, PeerTube or the provider’s embed link) – otherwise the whole web page appears in the tile."
                 },
                 {
                     "type": "Label",
