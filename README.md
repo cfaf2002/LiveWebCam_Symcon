@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.1 (Build 4)](https://img.shields.io/badge/Modul--Version-1.1_(Build_4)-informational.svg)](library.json)
+[![Modul-Version 1.2 (Build 5)](https://img.shields.io/badge/Modul--Version-1.2_(Build_5)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -45,6 +45,7 @@ Autor: Armin Frohwerk · Lizenz: MIT
   - **MJPEG-Stream** – z. B. von IP-Kameras im Heimnetz
   - **Video** (MP4, HLS) – direkt im Browser, ohne Zusatzbibliothek
 - „Automatisch erkennen“ ordnet die Adresse selbst einer Art zu
+- **Prüfung der Player-Seiten:** Nach dem Speichern prüft Symcon im Hintergrund, ob eine eingetragene Seite das Einbetten verbietet (`X-Frame-Options`, `Content-Security-Policy: frame-ancestors`) oder nicht erreichbar ist. Das Formular nennt Kamera und Grund, die Instanz meldet Status 202, und die Kachel zeigt einen Hinweis statt des Verbotssymbols des Browsers
 - **Über Symcon laden** für Standbilder: Symcon holt das Bild selbst über einen WebHook. Damit funktionieren Kameras im Heimnetz – auch mit Zugangsdaten (`http://benutzer:passwort@…`, Basic oder Digest) – unterwegs in der App, und die Zugangsdaten verlassen den Server nicht
 - YouTube wahlweise im erweiterten Datenschutzmodus (`youtube-nocookie.com`)
 - Eigene Kachel: Bild füllend oder ganz, Kameraleiste zum Umschalten, Wischen zum Wechseln, Vollbild, „Im Browser öffnen“, Neu laden
@@ -101,6 +102,7 @@ Startet der Betreiber den Livestream neu, bekommt er eine neue Video-ID. Dann en
 - Spielt ein YouTube-Kanal im Datenschutzmodus nicht, den Schalter „YouTube im erweiterten Datenschutzmodus“ ausschalten.
 - Kameras mit `http` in einer Visualisierung über `https` (z. B. Symcon Connect) blockiert der Browser. Standbilder deshalb über Symcon laden; MJPEG und Video brauchen dafür eine `https`-Adresse.
 - Ungültige Einträge stehen mit Grund oben unter **Aktionen**; die übrigen Kameras laufen weiter.
+- Seiten, die das Einbetten verbieten (z. B. `livespotting.tv` oder die Webcam-Seiten der Kurverwaltungen), stehen ebenfalls dort. Geprüft wird nach jedem Speichern, danach höchstens einmal pro Woche; „Player-Seiten jetzt prüfen“ prüft sofort.
 
 ### Kachel
 
@@ -136,6 +138,7 @@ WEBCAM_SelectCamera(int $InstanzID, int $Nummer): bool   // 0 = erste aktive Kam
 WEBCAM_NextCamera(int $InstanzID): bool
 WEBCAM_PreviousCamera(int $InstanzID): bool
 WEBCAM_GetCameraLink(int $InstanzID): string             // Adresse zum Öffnen im Browser, leer bei Zugangsdaten
+WEBCAM_CheckPages(int $InstanzID): bool                  // Player-Seiten prüfen; true = alle lassen sich einbetten
 ```
 
 ## 8. Sicherheit und Geschwindigkeit
@@ -148,6 +151,7 @@ WEBCAM_GetCameraLink(int $InstanzID): string             // Adresse zum Öffnen 
 - Mehrere Anzeigen teilen sich ein Bild: Standbilder werden kurz zwischengespeichert, Symcon fragt die Kamera höchstens einmal je Takt.
 - Der Player wird nur neu aufgebaut, wenn sich die Kamera ändert; Standbilder laden nur bei sichtbarer Kachel; Streams enden auf Wunsch 10 s nach dem Wegblättern. MJPEG-Streams laufen direkt vom Browser zur Kamera und belasten Symcon nicht.
 - Variablen und Kachel werden nur bei Änderung geschrieben.
+- Die Prüfung der Player-Seiten läuft per Timer nach dem Speichern, nicht im Speichervorgang selbst, liest nur die Kopfzeilen (höchstens 512 KB, Zeitlimit 8 s, Zertifikatsprüfung) und wird eine Woche lang zwischengespeichert.
 
 ## 9. Entwicklung und Tests
 
@@ -170,6 +174,7 @@ Der Ladetest prüft neben Formular, Kachel und Farbschema die Erkennung aller Qu
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.2 | 5 | 06.10.2026 | Prüfung der Player-Seiten: erkennt Seiten, die das Einbetten verbieten (`X-Frame-Options`, `frame-ancestors`) oder nicht erreichbar sind – Hinweis im Formular, Status 202, Kachel zeigt eine Erklärung statt des Verbotssymbols; Knopf „Player-Seiten jetzt prüfen“ und Befehl `WEBCAM_CheckPages` |
 | 1.1 | 4 | 06.10.2026 | PeerTube (z. B. livespotting): normaler Link wird automatisch zum reinen Player (ohne Titel, ohne P2P); Hinweis im Formular, den Player-Link statt der Webseite einzutragen; Beispiele für die Webcams in Cuxhaven |
 | 1.0 | 3 | 06.10.2026 | Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt |
 | 1.0 | 2 | 06.10.2026 | Modulliste: Hersteller „Webcam“ statt „(Gerät)“, keine zusätzlichen Suchbegriffe mehr – das Modul erscheint nur noch einmal als „LiveWebCam“ |

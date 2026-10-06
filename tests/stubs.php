@@ -52,8 +52,42 @@ $docroot = $copy . '/www';
 @mkdir($docroot);
 file_put_contents($docroot . '/cam.jpg', "\xFF\xD8\xFF\xE0" . str_repeat("\0", 64));
 file_put_contents($docroot . '/fake.jpg', '<html><script>alert(1)</script></html>');
+// Seiten mit den Kopfzeilen, mit denen Seiten das Einbetten verbieten (oder erlauben)
+file_put_contents($docroot . '/router.php', <<<'PHP'
+<?php
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+switch ($path) {
+    case '/xfo':
+        header('X-Frame-Options: SAMEORIGIN');
+        break;
+    case '/csp-none':
+        header("Content-Security-Policy: default-src 'self'; frame-ancestors 'none'");
+        break;
+    case '/csp-self':
+        header("Content-Security-Policy: frame-ancestors 'self' https://example.org");
+        header('X-Frame-Options: DENY');
+        break;
+    case '/csp-star':
+        // frame-ancestors hat Vorrang vor X-Frame-Options
+        header('Content-Security-Policy: frame-ancestors *');
+        header('X-Frame-Options: DENY');
+        break;
+    case '/redirect':
+        header('Location: /xfo', true, 302);
+        return true;
+    case '/missing':
+        http_response_code(404);
+        break;
+    case '/ok':
+        break;
+    default:
+        return false;
+}
+echo '<html><body>Webcam</body></html>';
+return true;
+PHP);
 $port = random_int(20000, 40000);
-$server = proc_open([PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', $docroot], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+$server = proc_open([PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', $docroot, $docroot . '/router.php'], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
 usleep(400000);
 
 register_shutdown_function(static function () use ($copy, $docroot, $server): void {
@@ -192,7 +226,40 @@ foreach (glob(__DIR__ . '/../*/module.json') as $moduleJson) {
         ok(tileData($id)['current'] === 0, 'Umschalten über die Variable');
         ok(WEBCAM_GetCameraLink($id) === 'https://www.youtube.com/watch?v=nQs-B8SNcWQ', 'WEBCAM_GetCameraLink');
 
+        // Player-Seiten: verbietet die Seite das Einbetten?
+        $base = 'http://127.0.0.1:' . $port;
+        setCameras($id, [
+            ['Active' => true, 'Name' => 'OK', 'Type' => 3, 'Source' => $base . '/ok', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'XFO', 'Type' => 3, 'Source' => $base . '/xfo', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'CSP none', 'Type' => 3, 'Source' => $base . '/csp-none', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'CSP self', 'Type' => 3, 'Source' => $base . '/csp-self', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'CSP star', 'Type' => 3, 'Source' => $base . '/csp-star', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'Weiterleitung', 'Type' => 3, 'Source' => $base . '/redirect', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'Fehlt', 'Type' => 3, 'Source' => $base . '/missing', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'YouTube', 'Type' => 1, 'Source' => 'nQs-B8SNcWQ', 'Proxy' => 0],
+        ]);
+        ok(IPS_GetInstance($id)['InstanceStatus'] === 102, 'Vor der Prüfung Status 102 (Prüfung läuft im Hintergrund)');
+        ok(WEBCAM_CheckPages($id) === false, 'WEBCAM_CheckPages meldet Probleme');
+        ok(IPS_GetInstance($id)['InstanceStatus'] === 202, 'Status 202 bei Seiten, die das Einbetten verbieten');
+        $blocked = array_column(tileData($id)['cams'], 'blocked', 'name');
+        ok($blocked === ['OK' => false, 'XFO' => true, 'CSP none' => true, 'CSP self' => true, 'CSP star' => false, 'Weiterleitung' => true, 'Fehlt' => false, 'YouTube' => false],
+            'Erkannt: X-Frame-Options, frame-ancestors none/self, * erlaubt, nach Weiterleitung');
+        $labels = json_encode(json_decode(IPS_GetConfigurationForm($id), true)['actions'], JSON_UNESCAPED_UNICODE);
+        ok(str_contains($labels, 'XFO') && str_contains($labels, 'HTTP 404') && !str_contains($labels, 'CSP star'), 'Probleme im Formular aufgelistet (inkl. nicht erreichbar)');
+        ob_start();
+        IPS_RequestAction($id, 'CheckPagesNow', 0);
+        ok(str_contains((string) ob_get_clean(), 'XFO'), 'Knopf „Player-Seiten jetzt prüfen“');
+        setCameras($id, [
+            ['Active' => true, 'Name' => 'OK', 'Type' => 3, 'Source' => $base . '/ok', 'Proxy' => 0],
+        ]);
+        ok(WEBCAM_CheckPages($id) === true && IPS_GetInstance($id)['InstanceStatus'] === 102, 'Nach Korrektur wieder Status 102');
+
         // WebHook
+        setCameras($id, [
+            ['Active' => true, 'Name' => 'A', 'Type' => 1, 'Source' => 'nQs-B8SNcWQ', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'B', 'Type' => 4, 'Source' => 'https://example.org/b.jpg', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'C', 'Type' => 4, 'Source' => 'http://admin:geheim@127.0.0.1:' . $port . '/cam.jpg', 'Proxy' => 0],
+        ]);
         $src = tileData($id)['cams'][2]['src'];
         parse_str((string) parse_url($src, PHP_URL_QUERY), $q);
         ok(hook($id, ['cam' => '2', 't' => 'falsch'])['body'] === 'Forbidden', 'WebHook: falscher Schlüssel abgewiesen');

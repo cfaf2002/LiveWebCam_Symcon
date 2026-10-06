@@ -69,7 +69,17 @@
             "response is not an image": "Antwort ist kein Bild",
             "PeerTube video or live stream (e.g. livespotting)": "PeerTube-Video oder Livestream (z. B. livespotting)",
             "For webcam pages, do not enter the address of the web page itself but the link to the player (YouTube, PeerTube or the provider’s embed link) – otherwise the whole web page appears in the tile.": "Bei Webcam-Seiten nicht die Adresse der Webseite selbst eintragen, sondern den Link zum Player (YouTube, PeerTube oder Einbettungs-Link des Anbieters) – sonst erscheint die ganze Webseite in der Kachel.",
-            "no PeerTube video found in the address": "in der Adresse wurde kein PeerTube-Video gefunden"
+            "no PeerTube video found in the address": "in der Adresse wurde kein PeerTube-Video gefunden",
+            "Check player pages now": "Player-Seiten jetzt prüfen",
+            "At least one player page cannot be embedded (details under Actions)": "Mindestens eine Player-Seite lässt sich nicht einbetten (Details unter Aktionen)",
+            "All player pages can be embedded.": "Alle Player-Seiten lassen sich einbetten.",
+            "Player pages that cannot be shown in the tile:": "Player-Seiten, die sich nicht in der Kachel zeigen lassen:",
+            "Please use the player link (YouTube, PeerTube or the provider’s embed link) instead.": "Bitte stattdessen den Player-Link eintragen (YouTube, PeerTube oder Einbettungs-Link des Anbieters).",
+            "page not reachable (HTTP %d)": "Seite nicht erreichbar (HTTP %d)",
+            "the page does not allow embedding": "die Seite verbietet das Einbetten",
+            "the page only allows embedding on certain sites (%s)": "die Seite erlaubt das Einbetten nur auf bestimmten Seiten (%s)",
+            "This page cannot be embedded": "Diese Seite lässt sich nicht einbetten",
+            "The provider does not allow it. Open it in the browser or enter the player link in the instance.": "Der Anbieter erlaubt es nicht. Im Browser öffnen oder in der Instanz den Player-Link eintragen."
         }
     }
 }

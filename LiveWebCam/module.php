@@ -34,6 +34,7 @@ class LiveWebCam extends IPSModuleStrict
     private const PROXY_NEVER = 2;
 
     private const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+    private const PAGE_CHECK_MAX_AGE = 7 * 86400;
     private const MAX_CACHE_BYTES = 2 * 1024 * 1024;
 
     public function Create(): void
@@ -56,6 +57,10 @@ class LiveWebCam extends IPSModuleStrict
         $this->RegisterAttributeInteger('Current', 0);
         $this->RegisterAttributeString('Token', '');
         $this->RegisterAttributeString('TileData', '{}');
+        // Ergebnis der Prüfung, ob sich Player-Seiten einbetten lassen (je Adresse, mit Zeitpunkt)
+        $this->RegisterAttributeString('PageChecks', '{}');
+
+        $this->RegisterTimer('CheckPages', 0, 'WEBCAM_CheckPages($_IPS[\'TARGET\']);');
     }
 
     public function ApplyChanges(): void
@@ -102,19 +107,13 @@ class LiveWebCam extends IPSModuleStrict
         $current = min(max(0, $this->ReadAttributeInteger('Current')), max(0, count($cameras) - 1));
         $this->WriteAttributeInteger('Current', $current);
 
-        if ($errors !== []) {
-            $this->SetStatus(201);
-            $this->SetSummary($this->Translate('Check camera list'));
-        } elseif ($cameras === []) {
-            $this->SetStatus(104);
-            $this->SetSummary($this->Translate('No camera'));
-        } else {
-            $this->SetStatus(102);
-            $this->SetSummary($cameras[$current]['name']);
-        }
+        $this->UpdateStatus();
         foreach ($errors as $error) {
             $this->SendDebug('Camera list', $error, 0);
         }
+
+        // Player-Seiten im Hintergrund prüfen (nicht im ApplyChanges, damit das Speichern nicht wartet)
+        $this->SetTimerInterval('CheckPages', $this->PagesToCheck($cameras) !== [] ? 2000 : 0);
 
         $this->UpdateOutputs();
     }
@@ -138,6 +137,12 @@ class LiveWebCam extends IPSModuleStrict
             case 'Previous':
                 $this->StepRun(-1);
                 return;
+            case 'CheckPagesNow':
+                $this->WriteAttributeString('PageChecks', '{}');
+                $this->CheckPagesRun();
+                $problems = $this->PageProblems();
+                echo $problems === [] ? $this->Translate('All player pages can be embedded.') : implode("\n", $problems);
+                return;
             case 'NewToken':
                 $this->WriteAttributeString('Token', bin2hex(random_bytes(16)));
                 $this->UpdateOutputs();
@@ -151,6 +156,14 @@ class LiveWebCam extends IPSModuleStrict
     {
         $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
         [, $errors] = $this->Cameras();
+        $problems = $this->PageProblems();
+        if ($problems !== []) {
+            array_unshift($form['actions'], [
+                'type'    => 'Label',
+                'caption' => $this->Translate('Player pages that cannot be shown in the tile:') . "\n• " . implode("\n• ", $problems)
+                    . "\n" . $this->Translate('Please use the player link (YouTube, PeerTube or the provider’s embed link) instead.'),
+            ]);
+        }
         if ($errors !== []) {
             array_unshift($form['actions'], [
                 'type'    => 'Label',
@@ -192,6 +205,15 @@ class LiveWebCam extends IPSModuleStrict
     public function PreviousCamera(): bool
     {
         return (bool) $this->StepRun(-1);
+    }
+
+    /**
+     * Prüft, ob sich die eingetragenen Player-Seiten einbetten lassen (läuft nach dem Speichern automatisch).
+     * true = alle Seiten lassen sich einbetten oder es gibt keine.
+     */
+    public function CheckPages(): bool
+    {
+        return (bool) $this->CheckPagesRun();
     }
 
     /** Liefert die Adresse zum Öffnen der aktuellen Kamera im Browser (leer bei Kameras mit Zugangsdaten). */
@@ -240,6 +262,159 @@ class LiveWebCam extends IPSModuleStrict
     // ------------------------------------------------------------------
     // Interne Abläufe
     // ------------------------------------------------------------------
+
+    private function CheckPagesRun(): bool
+    {
+        $this->SetTimerInterval('CheckPages', 0);
+        [$cameras] = $this->Cameras();
+        $checks = json_decode($this->ReadAttributeString('PageChecks'), true) ?: [];
+        foreach ($this->PagesToCheck($cameras) as $url) {
+            $result = $this->CheckFrame($url);
+            if ($result === null) {
+                continue; // nicht erreichbar (Netz): beim nächsten Speichern erneut versuchen
+            }
+            $checks[$url] = $result + ['time' => time()];
+        }
+        // Nur Einträge behalten, die noch in der Liste stehen
+        $used = [];
+        foreach ($cameras as $cam) {
+            if ($cam['kind'] === 'page') {
+                $used[$cam['src']] = true;
+            }
+        }
+        $checks = array_intersect_key($checks, $used);
+        $this->WriteAttributeString('PageChecks', (string) json_encode($checks));
+        $this->UpdateStatus();
+        $this->UpdateOutputs();
+        return $this->PageProblems() === [];
+    }
+
+    /** Player-Seiten, die noch nie oder vor über einer Woche geprüft wurden */
+    private function PagesToCheck(array $cameras): array
+    {
+        $checks = json_decode($this->ReadAttributeString('PageChecks'), true) ?: [];
+        $urls = [];
+        foreach ($cameras as $cam) {
+            $done = $checks[$cam['src']] ?? null;
+            if ($cam['kind'] === 'page' && (!is_array($done) || time() - (int) ($done['time'] ?? 0) > self::PAGE_CHECK_MAX_AGE)) {
+                $urls[$cam['src']] = $cam['src'];
+            }
+        }
+        return array_values($urls);
+    }
+
+    /** „Name: Grund“ für jede Player-Seite, die sich nicht einbetten lässt oder nicht erreichbar ist */
+    private function PageProblems(): array
+    {
+        [$cameras] = $this->Cameras();
+        $checks = json_decode($this->ReadAttributeString('PageChecks'), true) ?: [];
+        $list = [];
+        foreach ($cameras as $cam) {
+            $check = $cam['kind'] === 'page' ? ($checks[$cam['src']] ?? null) : null;
+            if (is_array($check) && ($check['state'] ?? 'ok') !== 'ok') {
+                $list[] = $cam['name'] . ': ' . (string) $check['reason'];
+            }
+        }
+        return $list;
+    }
+
+    private function UpdateStatus(): void
+    {
+        [$cameras, $errors] = $this->Cameras();
+        if ($errors !== []) {
+            $this->SetStatus(201);
+            $this->SetSummary($this->Translate('Check camera list'));
+        } elseif ($cameras === []) {
+            $this->SetStatus(104);
+            $this->SetSummary($this->Translate('No camera'));
+        } elseif ($this->PageProblems() !== []) {
+            $this->SetStatus(202);
+            $this->SetSummary($this->Translate('Check camera list'));
+        } else {
+            $this->SetStatus(102);
+            $this->SetSummary($cameras[$this->ReadAttributeInteger('Current')]['name'] ?? '');
+        }
+    }
+
+    /**
+     * Fragt eine Seite ab und wertet die Kopfzeilen aus, mit denen Seiten das Einbetten verbieten:
+     * Content-Security-Policy „frame-ancestors“ (hat Vorrang) und X-Frame-Options.
+     *
+     * @return array{state: string, reason: string}|null null = Netzfehler, später erneut prüfen
+     */
+    private function CheckFrame(string $url): ?array
+    {
+        $headers = [];
+        $ch = curl_init($url);
+        $options = [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_USERAGENT      => 'Mozilla/5.0 (IP-Symcon LiveWebCam)',
+            CURLOPT_ENCODING       => '',
+            CURLOPT_NOPROGRESS     => false,
+            // Nur die Kopfzeilen zählen – große Seiten nicht vollständig laden
+            CURLOPT_XFERINFOFUNCTION => static fn ($ch, int $total, int $now): int => $now > 512 * 1024 ? 1 : 0,
+            CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$headers): int {
+                if (str_starts_with($line, 'HTTP/')) {
+                    $headers = []; // nach einer Weiterleitung zählt nur die letzte Antwort
+                } elseif (str_contains($line, ':')) {
+                    [$name, $value] = explode(':', $line, 2);
+                    $headers[strtolower(trim($name))][] = trim($value);
+                }
+                return strlen($line);
+            },
+        ];
+        if (defined('CURLOPT_PROTOCOLS_STR')) {
+            $options[CURLOPT_PROTOCOLS_STR] = 'http,https';
+            $options[CURLOPT_REDIR_PROTOCOLS_STR] = 'http,https';
+        }
+        curl_setopt_array($ch, $options);
+        curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $errno = curl_errno($ch);
+        if ($code === 0 || ($errno !== 0 && $errno !== CURLE_ABORTED_BY_CALLBACK)) {
+            $this->SendDebug('Page check', $url . ' → ' . curl_error($ch), 0);
+            return null;
+        }
+        $this->SendDebug('Page check', $url . ' → HTTP ' . $code, 0);
+        if ($code >= 400) {
+            return ['state' => 'unreachable', 'reason' => sprintf($this->Translate('page not reachable (HTTP %d)'), $code)];
+        }
+        return $this->FrameVerdict($headers);
+    }
+
+    /** @return array{state: string, reason: string} */
+    private function FrameVerdict(array $headers): array
+    {
+        foreach ($headers['content-security-policy'] ?? [] as $policy) {
+            foreach (explode(';', $policy) as $directive) {
+                $parts = preg_split('/\s+/', trim($directive)) ?: [];
+                if (strtolower((string) array_shift($parts)) !== 'frame-ancestors') {
+                    continue;
+                }
+                if (in_array('*', $parts, true)) {
+                    return ['state' => 'ok', 'reason' => ''];
+                }
+                if ($parts === [] || in_array("'none'", array_map('strtolower', $parts), true)) {
+                    return ['state' => 'blocked', 'reason' => $this->Translate('the page does not allow embedding')];
+                }
+                $allowed = array_slice(array_map(static fn (string $p): string => trim($p, "'"), $parts), 0, 3);
+                return ['state' => 'blocked', 'reason' => sprintf($this->Translate('the page only allows embedding on certain sites (%s)'), implode(', ', $allowed))];
+            }
+        }
+        foreach ($headers['x-frame-options'] ?? [] as $value) {
+            $value = strtoupper(trim($value));
+            if ($value === 'DENY' || $value === 'SAMEORIGIN') {
+                return ['state' => 'blocked', 'reason' => $this->Translate('the page does not allow embedding') . ' (X-Frame-Options: ' . $value . ')'];
+            }
+        }
+        return ['state' => 'ok', 'reason' => ''];
+    }
 
     private function SelectRun(int $index): bool
     {
@@ -290,9 +465,19 @@ class LiveWebCam extends IPSModuleStrict
     private function TileData(): array
     {
         [$cameras, $errors] = $this->Cameras();
+        $checks = json_decode($this->ReadAttributeString('PageChecks'), true) ?: [];
         $list = [];
         foreach ($cameras as $cam) {
-            $list[] = ['name' => $cam['name'], 'kind' => $cam['kind'], 'src' => $cam['src'], 'auto' => $cam['auto'], 'link' => $cam['link']];
+            $check = $cam['kind'] === 'page' ? ($checks[$cam['src']] ?? null) : null;
+            $list[] = [
+                'name'    => $cam['name'],
+                'kind'    => $cam['kind'],
+                'src'     => $cam['src'],
+                'auto'    => $cam['auto'],
+                'link'    => $cam['link'],
+                // nur „verbietet Einbetten“ – ist eine Seite für Symcon nicht erreichbar, versucht es die Kachel trotzdem
+                'blocked' => is_array($check) && ($check['state'] ?? '') === 'blocked',
+            ];
         }
         $error = '';
         if ($cameras === []) {
@@ -320,6 +505,8 @@ class LiveWebCam extends IPSModuleStrict
                 'fullscreen'  => $this->Translate('Full screen'),
                 'open'        => $this->Translate('Open in browser'),
                 'reload'      => $this->Translate('Reload'),
+                'blocked'     => $this->Translate('This page cannot be embedded'),
+                'blockedHint' => $this->Translate('The provider does not allow it. Open it in the browser or enter the player link in the instance.'),
             ],
         ];
     }

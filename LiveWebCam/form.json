@@ -229,6 +229,11 @@
         },
         {
             "type": "Button",
+            "caption": "Check player pages now",
+            "onClick": "IPS_RequestAction($id, 'CheckPagesNow', 0);"
+        },
+        {
+            "type": "Button",
             "caption": "Create new access key",
             "onClick": "IPS_RequestAction($id, 'NewToken', 0);",
             "confirm": "The images loaded via Symcon get a new address. Old links no longer work. Continue?"
@@ -249,6 +254,11 @@
             "code": 201,
             "icon": "error",
             "caption": "At least one camera entry is invalid (details under Actions)"
+        },
+        {
+            "code": 202,
+            "icon": "error",
+            "caption": "At least one player page cannot be embedded (details under Actions)"
         }
     ]
 }

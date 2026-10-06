@@ -441,6 +441,12 @@
             shownKey = key;
             unloaded = false;
 
+            // Seite verbietet das Einbetten (vom Modul geprüft): Hinweis statt Verbotssymbol des Browsers
+            if (c.blocked) {
+                message(txt('blocked'), txt('blockedHint'));
+                return;
+            }
+
             if (c.kind === 'youtube' || c.kind === 'peertube') {
                 // „auto“ = gleiche Adresse mit stummem Autostart (baut das Modul)
                 media.appendChild(frame(data.autoplay || data.startOnTap ? (c.auto || c.src) : c.src, true));
