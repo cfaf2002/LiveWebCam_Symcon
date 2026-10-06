@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.2 (Build 5)](https://img.shields.io/badge/Modul--Version-1.2_(Build_5)-informational.svg)](library.json)
+[![Modul-Version 1.2 (Build 6)](https://img.shields.io/badge/Modul--Version-1.2_(Build_6)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -92,12 +92,12 @@ Danach eine Instanz **LiveWebCam** anlegen.
 | Duhnen Rettungsstation | Automatisch erkennen | `https://peertube.livespotting.com/w/qLZ7kfvg1PJjGPXDsBv9iy` |
 | Sahlenburg | Automatisch erkennen | `https://peertube.livespotting.com/w/pQF6LXtAFguUDK8sZfmjsz` |
 | Altenbruch | Automatisch erkennen | `https://peertube.livespotting.com/w/7no6Tm9JDjyDKJKBMYGFyE` |
-| Kugelbake (YouTube) | Automatisch erkennen | `https://www.youtube.com/watch?v=nQs-B8SNcWQ` |
 
-Startet der Betreiber den Livestream neu, bekommt er eine neue Video-ID. Dann entweder den neuen Link eintragen oder – robuster – Art „YouTube-Kanal“ mit der Kanal-ID (`UC…`, zu finden in der Kanal-Adresse oder unter „Kanal teilen → Kanal-ID kopieren“). Ein `@Name` lässt sich ohne YouTube-Schlüssel nicht auflösen. PeerTube-Livestreams behalten dagegen ihre Adresse.
+**YouTube-Livestreams:** Startet der Betreiber den Livestream neu, bekommt er eine neue Video-ID, und unter der alten Adresse steht nur noch „Diese Livestream-Aufzeichnung ist nicht verfügbar“. Dann entweder den neuen Link eintragen oder – robuster – Art „YouTube-Kanal“ mit der Kanal-ID (`UC…`, zu finden in der Kanal-Adresse oder unter „Kanal teilen → Kanal-ID kopieren“). Ein `@Name` lässt sich ohne YouTube-Schlüssel nicht auflösen. PeerTube-Livestreams behalten dagegen ihre Adresse.
 
 **Hinweise:**
 - Bei Webcam-Anbietern den **Einbettungs-Link** aus „Teilen/Einbetten“ verwenden, nicht die normale Seite – viele Seiten verbieten das Einbetten. Bei PeerTube und YouTube genügt der normale Link, das Modul baut den Player-Link selbst.
+- Manche Anbieter-Player starten grundsätzlich erst nach Antippen (z. B. Windy) – das kann die Kachel nicht ändern. YouTube und PeerTube starten automatisch (stumm).
 - PeerTube wird ohne Titelzeile und mit `p2p=0` eingebettet: Der Browser lädt den Stream nur herunter und verteilt ihn nicht an andere Zuschauer weiter.
 - Spielt ein YouTube-Kanal im Datenschutzmodus nicht, den Schalter „YouTube im erweiterten Datenschutzmodus“ ausschalten.
 - Kameras mit `http` in einer Visualisierung über `https` (z. B. Symcon Connect) blockiert der Browser. Standbilder deshalb über Symcon laden; MJPEG und Video brauchen dafür eine `https`-Adresse.
@@ -174,6 +174,7 @@ Der Ladetest prüft neben Formular, Kachel und Farbschema die Erkennung aller Qu
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.2 | 6 | 06.10.2026 | Bereinigt: ungenutzter Kachel-Text und ungenutzte Konstante entfernt; README ohne veraltetes YouTube-Beispiel, mit Hinweisen zu neu gestarteten YouTube-Livestreams und zu Playern, die nur nach Antippen starten |
 | 1.2 | 5 | 06.10.2026 | Prüfung der Player-Seiten: erkennt Seiten, die das Einbetten verbieten (`X-Frame-Options`, `frame-ancestors`) oder nicht erreichbar sind – Hinweis im Formular, Status 202, Kachel zeigt eine Erklärung statt des Verbotssymbols; Knopf „Player-Seiten jetzt prüfen“ und Befehl `WEBCAM_CheckPages` |
 | 1.1 | 4 | 06.10.2026 | PeerTube (z. B. livespotting): normaler Link wird automatisch zum reinen Player (ohne Titel, ohne P2P); Hinweis im Formular, den Player-Link statt der Webseite einzutragen; Beispiele für die Webcams in Cuxhaven |
 | 1.0 | 3 | 06.10.2026 | Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt |

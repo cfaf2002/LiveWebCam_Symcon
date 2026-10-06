@@ -30,8 +30,7 @@ class LiveWebCam extends IPSModuleStrict
 
     // Laden über Symcon (Spalte „Über Symcon laden“)
     private const PROXY_AUTO = 0;
-    private const PROXY_ALWAYS = 1;
-    private const PROXY_NEVER = 2;
+    private const PROXY_ALWAYS = 1; // 2 = Nie (alles außer Automatisch/Immer)
 
     private const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
     private const PAGE_CHECK_MAX_AGE = 7 * 86400;
@@ -496,7 +495,6 @@ class LiveWebCam extends IPSModuleStrict
             'error'       => $error,
             't'           => [
                 'play'        => $this->Translate('Play'),
-                'paused'      => $this->Translate('Paused'),
                 'unreachable' => $this->Translate('Camera not reachable'),
                 'retry'       => $this->Translate('Retrying automatically'),
                 'noCamera'    => $this->Translate('No camera'),
