@@ -2,14 +2,8 @@
     "id": "{F5E2F967-FDDC-46E0-BCAE-292A6537E915}",
     "name": "LiveWebCam",
     "type": 3,
-    "vendor": "",
-    "aliases": [
-        "LiveWebCam",
-        "Webcam",
-        "Live-Kamera",
-        "Livecam",
-        "Kamera-Kachel"
-    ],
+    "vendor": "Webcam",
+    "aliases": [],
     "parentRequirements": [],
     "childRequirements": [],
     "implemented": [],
