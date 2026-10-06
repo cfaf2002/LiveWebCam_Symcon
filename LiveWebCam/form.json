@@ -1,0 +1,246 @@
+{
+    "elements": [
+        {
+            "type": "Label",
+            "caption": "Live cameras and webcams in the tile visualization: YouTube live streams, player pages of webcam providers, still images, MJPEG and video streams."
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Cameras",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "List",
+                    "name": "Cameras",
+                    "caption": "Cameras (order = order in the tile)",
+                    "rowCount": 6,
+                    "add": true,
+                    "delete": true,
+                    "changeOrder": true,
+                    "columns": [
+                        {
+                            "caption": "Active",
+                            "name": "Active",
+                            "width": "70px",
+                            "add": true,
+                            "edit": {
+                                "type": "CheckBox"
+                            }
+                        },
+                        {
+                            "caption": "Name",
+                            "name": "Name",
+                            "width": "200px",
+                            "add": "",
+                            "edit": {
+                                "type": "ValidationTextBox"
+                            }
+                        },
+                        {
+                            "caption": "Kind",
+                            "name": "Type",
+                            "width": "230px",
+                            "add": 0,
+                            "edit": {
+                                "type": "Select",
+                                "options": [
+                                    {
+                                        "caption": "Detect automatically",
+                                        "value": 0
+                                    },
+                                    {
+                                        "caption": "YouTube video or live stream",
+                                        "value": 1
+                                    },
+                                    {
+                                        "caption": "YouTube channel (current live stream)",
+                                        "value": 2
+                                    },
+                                    {
+                                        "caption": "Player page (embed link)",
+                                        "value": 3
+                                    },
+                                    {
+                                        "caption": "Still image (JPG/PNG)",
+                                        "value": 4
+                                    },
+                                    {
+                                        "caption": "MJPEG stream",
+                                        "value": 5
+                                    },
+                                    {
+                                        "caption": "Video (MP4/HLS)",
+                                        "value": 6
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "caption": "Address, video ID or channel ID",
+                            "name": "Source",
+                            "width": "auto",
+                            "add": "",
+                            "edit": {
+                                "type": "ValidationTextBox"
+                            }
+                        },
+                        {
+                            "caption": "Load via Symcon",
+                            "name": "Proxy",
+                            "width": "200px",
+                            "add": 0,
+                            "edit": {
+                                "type": "Select",
+                                "options": [
+                                    {
+                                        "caption": "Automatic (http or access data)",
+                                        "value": 0
+                                    },
+                                    {
+                                        "caption": "Always",
+                                        "value": 1
+                                    },
+                                    {
+                                        "caption": "Never",
+                                        "value": 2
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "Label",
+                    "caption": "„Load via Symcon“ only applies to still images: Symcon fetches the image itself, so cameras in the home network with access data (http://user:password@…) also work in the app on the go – the access data never leave the server."
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "PrivacyMode",
+                    "caption": "YouTube in extended privacy mode (youtube-nocookie.com)"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "ImageRefresh",
+                    "caption": "Reload still images every",
+                    "suffix": "s",
+                    "minimum": 2,
+                    "maximum": 3600
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Tile",
+            "items": [
+                {
+                    "type": "Select",
+                    "name": "TileTheme",
+                    "caption": "Color scheme of the tile",
+                    "options": [
+                        {
+                            "caption": "Symcon design – colors of the visualization",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Dark",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Light",
+                            "value": 2
+                        }
+                    ]
+                },
+                {
+                    "type": "Select",
+                    "name": "Fit",
+                    "caption": "Image section",
+                    "options": [
+                        {
+                            "caption": "Fill tile (edges may be cut off)",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Show whole image",
+                            "value": 1
+                        }
+                    ]
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "ShowBar",
+                    "caption": "Camera bar below the image (switch cameras)"
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "Autoplay",
+                    "caption": "Start videos automatically (muted)"
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "StartOnTap",
+                    "caption": "Start streams only after tapping (saves data volume)"
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "PauseHidden",
+                    "caption": "Stop stream when the tile is not visible"
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "WebFront and older visualizations",
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "HtmlVariable",
+                    "caption": "Variable „Live view“ with HTML of the current camera"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "HtmlHeight",
+                    "caption": "Height",
+                    "suffix": "px",
+                    "minimum": 120,
+                    "maximum": 2000
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "Button",
+            "caption": "Previous camera",
+            "onClick": "IPS_RequestAction($id, 'Previous', 0);"
+        },
+        {
+            "type": "Button",
+            "caption": "Next camera",
+            "onClick": "IPS_RequestAction($id, 'Next', 0);"
+        },
+        {
+            "type": "Button",
+            "caption": "Create new access key",
+            "onClick": "IPS_RequestAction($id, 'NewToken', 0);",
+            "confirm": "The images loaded via Symcon get a new address. Old links no longer work. Continue?"
+        }
+    ],
+    "status": [
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Active"
+        },
+        {
+            "code": 104,
+            "icon": "inactive",
+            "caption": "Please add at least one active camera"
+        },
+        {
+            "code": 201,
+            "icon": "error",
+            "caption": "At least one camera entry is invalid (details under Actions)"
+        }
+    ]
+}

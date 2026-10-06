@@ -1,0 +1,18 @@
+{
+    "id": "{F5E2F967-FDDC-46E0-BCAE-292A6537E915}",
+    "name": "LiveWebCam",
+    "type": 3,
+    "vendor": "",
+    "aliases": [
+        "LiveWebCam",
+        "Webcam",
+        "Live-Kamera",
+        "Livecam",
+        "Kamera-Kachel"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "WEBCAM",
+    "url": "https://github.com/cfaf2002/LiveWebCam_Symcon"
+}

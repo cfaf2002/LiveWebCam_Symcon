@@ -1,0 +1,650 @@
+<!--
+    Kachel für das Modul "LiveWebCam" (IP-Symcon HTML-SDK)
+    Copyright (c) 2026 Armin Frohwerk · MIT-Lizenz (siehe LICENSE)
+    SPDX-License-Identifier: MIT
+
+    Aufbau:     Bühne mit dem Player der aktuellen Kamera (YouTube, Player-Seite, Standbild,
+                MJPEG oder Video), darunter die Kameraleiste zum Umschalten.
+    Sicherheit: Alle Texte per textContent. Adressen prüft das Modul (nur http/https);
+                fremde Seiten laufen in einem iframe mit sandbox und können die Visualisierung
+                weder umleiten noch übernehmen. Zugangsdaten kommen nie in der Kachel an.
+    Leistung:   Keine externen Dateien. Der Player wird nur neu aufgebaut, wenn sich die Kamera
+                ändert; Standbilder laden nur, solange die Kachel sichtbar ist, und Streams werden
+                auf Wunsch angehalten, wenn die Kachel länger nicht zu sehen ist.
+-->
+<style>
+    /* ===== Hausstil cfaf2002 · Kachel-Grundlage v1 (siehe STYLEGUIDE.md) =====
+       Farbschema 0 = Symcon-Design (Farben der Visualisierung), 1 = Dunkel, 2 = Hell.
+       Modulspezifisch ist nur --brand (Akzent der festen Farbschemas). */
+    :root {
+        --brand: #1c9ad6;
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --fg: var(--content-color, #eef3f7);
+        --accent: var(--accent-color, var(--brand));
+        --on-accent: #ffffff;
+        --muted: color-mix(in srgb, var(--fg) 65%, transparent);
+        --faint: color-mix(in srgb, var(--fg) 40%, transparent);
+        --line: color-mix(in srgb, var(--fg) 15%, transparent);
+        --surface: color-mix(in srgb, var(--fg) 7%, transparent);
+        --surface-hover: color-mix(in srgb, var(--fg) 12%, transparent);
+        --popup: var(--card-color, #232a33);
+        --ok: #34b36b;
+        --warn: #e2a63b;
+        --bad: #e5484d;
+        --info: #4b8ef0;
+        --off: #8796a5;
+        --radius-l: 14px;
+        --radius: 12px;
+        --radius-s: 8px;
+        --pill: 999px;
+        --gap: 8px;
+    }
+    html.theme-dark  { --fg: #eef3f7; --accent: var(--brand); --tile-bg: #1b2530; --popup: #232d39; }
+    html.theme-light { --fg: #1d2b36; --accent: var(--brand); --tile-bg: #e9eef3; --popup: #ffffff; }
+    html.theme-dark body, html.theme-light body { background: var(--tile-bg); }
+    html, body { font-family: var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    /* ===== Ende Kachel-Grundlage ===== */
+
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+    body { background: transparent; }
+
+    #tile {
+        box-sizing: border-box;
+        width: 100%;
+        height: 100%;
+        /* Oben bleibt Platz für Titel und Symbole, die die Kachel-Visualisierung selbst zeichnet */
+        --hdr: clamp(40px, 11cqmin, 54px);
+        padding: var(--hdr) 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: var(--gap);
+        overflow: hidden;
+        container-type: size;
+        font-size: 13px;
+        line-height: 1.35;
+    }
+
+    /* Bühne: hier sitzt der Player. Bild und Video bekommen immer einen dunklen Grund. */
+    .stage {
+        position: relative;
+        flex: 1 1 auto;
+        min-height: 0;
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: #0b1016;
+        isolation: isolate;
+    }
+    .stage:fullscreen { border-radius: 0; }
+    .media, .media > * {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: block;
+    }
+    .media img, .media video { object-fit: var(--fit, cover); background: #0b1016; }
+
+    /* Overlays liegen über dem Bild: dort ist die Schrift immer hell */
+    .chip {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        z-index: 3;
+        max-width: calc(100% - 16px);
+        padding: 4px 10px;
+        border-radius: var(--pill);
+        background: rgba(0, 0, 0, .55);
+        color: #fff;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+    }
+    .live { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--bad); vertical-align: 1px; }
+    .tools {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 3;
+        display: flex;
+        gap: 6px;
+    }
+    .tool, .tap, .side {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 0;
+        border-radius: var(--pill);
+        background: rgba(0, 0, 0, .55);
+        color: #fff;
+        cursor: pointer;
+        text-decoration: none;
+        font: inherit;
+    }
+    .tool:hover, .side:hover { background: rgba(0, 0, 0, .75); }
+    .tool svg, .side svg, .nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .side { position: absolute; top: 50%; z-index: 3; transform: translateY(-50%); display: none; }
+    /* Pfeile im Bild nur bei mehreren Kameras ohne Leiste (oder wenn die Kachel für die Leiste zu klein ist) */
+    #tile.many:not(.bar-on) .side { display: inline-flex; }
+    .side.prev { left: 8px; }
+    .side.next { right: 8px; }
+    .tap {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        z-index: 4;
+        transform: translate(-50%, -50%);
+        height: 48px;
+        padding: 0 20px;
+        gap: 8px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-weight: 600;
+        font-size: 15px;
+    }
+    .tap svg { width: 20px; height: 20px; fill: currentColor; }
+    .msg {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        padding: 16px;
+        text-align: center;
+        color: #fff;
+        background: rgba(11, 16, 22, .72);
+    }
+    .msg b { font-size: 15px; }
+    .msg span { color: rgba(255, 255, 255, .75); }
+
+    /* Kameraleiste */
+    .bar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+    }
+    .nav {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: var(--pill);
+        background: var(--surface);
+        color: var(--fg);
+        cursor: pointer;
+    }
+    .nav:hover { background: var(--surface-hover); }
+    .pills {
+        flex: 1 1 auto;
+        display: flex;
+        gap: 6px;
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        scroll-behavior: smooth;
+    }
+    .pills::-webkit-scrollbar { display: none; }
+    .pill {
+        flex: 0 0 auto;
+        height: 36px;
+        max-width: 220px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--pill);
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+    }
+    .pill:hover { background: var(--surface-hover); }
+    .pill[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600; }
+
+    [hidden] { display: none !important; }
+
+    /* Kleine Kacheln: weniger Rand, keine Leiste (Umschalten über die Pfeile im Bild) */
+    @container (max-height: 230px) {
+        #tile { padding: var(--hdr) 6px 6px; }
+        .bar { display: none; }
+        .tools .tool.optional { display: none; }
+        #tile.many .side { display: inline-flex; }
+    }
+    @container (max-width: 260px) {
+        .tools .tool.optional { display: none; }
+    }
+</style>
+
+<div id="tile">
+    <div class="stage" id="stage">
+        <div class="media" id="media"></div>
+        <div class="msg" id="msg" hidden><b id="msgTitle"></b><span id="msgText"></span></div>
+        <button class="tap" id="tap" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span id="tapText"></span>
+        </button>
+        <div class="chip" id="chip" hidden><span class="live" id="live" hidden></span><span id="chipText"></span></div>
+        <button class="side prev" id="sidePrev" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="side next" id="sideNext" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+        <div class="tools">
+            <button class="tool optional" id="reload" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+            </button>
+            <a class="tool optional" id="open" target="_blank" rel="noopener noreferrer" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+            </a>
+            <button class="tool" id="fs" type="button" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            </button>
+        </div>
+    </div>
+    <div class="bar" id="bar" hidden>
+        <button class="nav" id="prev" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div class="pills" id="pills" role="group"></div>
+        <button class="nav" id="next" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+    </div>
+</div>
+
+<script>
+    // Hausstil: Farbschema der Kachel (0 = Symcon-Design, 1 = Dunkel, 2 = Hell)
+    function applyTheme(theme) {
+        var root = document.documentElement;
+        root.classList.toggle('theme-dark', theme === 1);
+        root.classList.toggle('theme-light', theme === 2);
+    }
+
+    (function () {
+        'use strict';
+
+        var $ = function (id) { return document.getElementById(id); };
+        var tile = $('tile');
+        var stage = $('stage');
+        var media = $('media');
+
+        var data = null;        // letzte Daten vom Modul
+        var shownKey = '';      // Kamera, deren Player gerade aufgebaut ist
+        var current = 0;
+        var started = {};       // Kameras, die nach „Antippen“ gestartet wurden
+        var visible = true;
+        var unloaded = false;   // Stream wegen Unsichtbarkeit angehalten
+        var hideTimer = 0;
+        var imageTimer = 0;
+        var retryTimer = 0;
+
+        var LIVE_KINDS = { youtube: 1, page: 1, mjpeg: 1, video: 1 };
+
+        function send(ident, value) {
+            if (typeof window.requestAction === 'function') {
+                window.requestAction(ident, value);
+            }
+        }
+
+        function txt(key) {
+            return (data && data.t && data.t[key]) || '';
+        }
+
+        function cams() {
+            return (data && Array.isArray(data.cams)) ? data.cams : [];
+        }
+
+        function cam() {
+            return cams()[current] || null;
+        }
+
+        function message(title, text) {
+            $('msg').hidden = !title;
+            $('msgTitle').textContent = title || '';
+            $('msgText').textContent = text || '';
+        }
+
+        function withParam(src, key, value) {
+            return src + (src.indexOf('?') >= 0 ? '&' : '?') + key + '=' + encodeURIComponent(value);
+        }
+
+        function stopTimers() {
+            clearTimeout(imageTimer);
+            clearTimeout(retryTimer);
+            imageTimer = 0;
+            retryTimer = 0;
+        }
+
+        // ---- Player ----------------------------------------------------------
+
+        function unload() {
+            stopTimers();
+            // iframe/Video/Bild entfernen, damit der Stream wirklich endet
+            var v = media.querySelector('video');
+            if (v) {
+                v.pause();
+                v.removeAttribute('src');
+                v.load();
+            }
+            while (media.firstChild) {
+                media.removeChild(media.firstChild);
+            }
+            shownKey = '';
+        }
+
+        function frame(src, sandboxed) {
+            var f = document.createElement('iframe');
+            f.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture; encrypted-media');
+            f.setAttribute('allowfullscreen', '');
+            f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            f.setAttribute('loading', 'eager');
+            if (sandboxed) {
+                // Fremde Seite darf die Visualisierung nicht umleiten (kein allow-top-navigation)
+                f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox');
+            }
+            f.title = cam() ? cam().name : '';
+            f.src = src;
+            return f;
+        }
+
+        function loadImage(c, key, first) {
+            var img = new Image();
+            img.decoding = 'async';
+            img.alt = c.name;
+            img.onload = function () {
+                if (shownKey !== key) {
+                    return;
+                }
+                while (media.firstChild) {
+                    media.removeChild(media.firstChild);
+                }
+                media.appendChild(img);
+                message('');
+                scheduleImage(c, key);
+            };
+            img.onerror = function () {
+                if (shownKey !== key) {
+                    return;
+                }
+                if (first || !media.firstChild) {
+                    message(txt('unreachable'), txt('retry'));
+                }
+                scheduleImage(c, key);
+            };
+            img.src = withParam(c.src, '_', Date.now());
+        }
+
+        function scheduleImage(c, key) {
+            clearTimeout(imageTimer);
+            if (!visible) {
+                return;
+            }
+            imageTimer = setTimeout(function () {
+                if (shownKey === key && visible) {
+                    loadImage(c, key, false);
+                }
+            }, Math.max(2, data.refresh || 10) * 1000);
+        }
+
+        function streamError(key) {
+            if (shownKey !== key) {
+                return;
+            }
+            message(txt('unreachable'), txt('retry'));
+            clearTimeout(retryTimer);
+            retryTimer = setTimeout(function () {
+                if (shownKey === key && visible) {
+                    build(true);
+                }
+            }, 15000);
+        }
+
+        function build(force) {
+            var c = cam();
+            var key = c ? current + '|' + c.kind + '|' + c.src : '';
+            if (!force && key === shownKey) {
+                return;
+            }
+            unload();
+            message('');
+            $('tap').hidden = true;
+            if (!c) {
+                message(data && data.error ? txt('noCamera') : '', data ? data.error : '');
+                return;
+            }
+            // Erst nach Antippen starten (Standbilder laden immer)
+            if (data.startOnTap && LIVE_KINDS[c.kind] && !started[key]) {
+                $('tap').hidden = false;
+                shownKey = key;
+                return;
+            }
+            shownKey = key;
+            unloaded = false;
+
+            if (c.kind === 'youtube') {
+                media.appendChild(frame(data.autoplay || data.startOnTap ? c.src + '&autoplay=1&mute=1' : c.src, true));
+            } else if (c.kind === 'page') {
+                media.appendChild(frame(c.src, true));
+            } else if (c.kind === 'image') {
+                loadImage(c, key, true);
+            } else if (c.kind === 'mjpeg') {
+                var img = document.createElement('img');
+                img.alt = c.name;
+                img.onerror = function () { streamError(key); };
+                img.src = c.src;
+                media.appendChild(img);
+            } else if (c.kind === 'video') {
+                var v = document.createElement('video');
+                v.muted = true;
+                v.defaultMuted = true;
+                v.playsInline = true;
+                v.setAttribute('playsinline', '');
+                v.autoplay = !!(data.autoplay || data.startOnTap);
+                v.controls = !v.autoplay;
+                v.onerror = function () { streamError(key); };
+                v.src = c.src;
+                media.appendChild(v);
+            }
+        }
+
+        // ---- Oberfläche -------------------------------------------------------
+
+        function select(index) {
+            var n = cams().length;
+            if (!n) {
+                return;
+            }
+            current = ((index % n) + n) % n;
+            renderChrome();
+            build(false);
+            send('Camera', current);
+        }
+
+        function renderChrome() {
+            var list = cams();
+            var c = cam();
+            var many = list.length > 1;
+            var barOn = !!(data && data.bar) && many;
+
+            $('bar').hidden = !barOn;
+            tile.classList.toggle('many', many);
+            tile.classList.toggle('bar-on', barOn);
+            $('chip').hidden = !c;
+            $('chipText').textContent = c ? c.name : '';
+            $('live').hidden = !c || !LIVE_KINDS[c.kind];
+            $('reload').hidden = !c;
+
+            var open = $('open');
+            if (c && /^https?:\/\//i.test(c.link)) {
+                open.href = c.link;
+                open.hidden = false;
+            } else {
+                open.removeAttribute('href');
+                open.hidden = true;
+            }
+            $('fs').hidden = !c || !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+
+            var pills = $('pills');
+            if (pills.childNodes.length !== list.length) {
+                while (pills.firstChild) {
+                    pills.removeChild(pills.firstChild);
+                }
+                list.forEach(function (item, i) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'pill';
+                    b.addEventListener('click', function () { select(i); });
+                    pills.appendChild(b);
+                });
+            }
+            list.forEach(function (item, i) {
+                var b = pills.childNodes[i];
+                b.textContent = item.name;
+                b.title = item.name;
+                b.setAttribute('aria-pressed', i === current ? 'true' : 'false');
+            });
+            var active = pills.childNodes[current];
+            if (active && barOn) {
+                var left = active.offsetLeft - (pills.clientWidth - active.offsetWidth) / 2;
+                pills.scrollLeft = Math.max(0, left);
+            }
+        }
+
+        function labels() {
+            [['prev', 'previous'], ['next', 'next'], ['sidePrev', 'previous'], ['sideNext', 'next'],
+                ['reload', 'reload'], ['open', 'open'], ['fs', 'fullscreen']].forEach(function (p) {
+                $(p[0]).setAttribute('aria-label', txt(p[1]));
+                $(p[0]).title = txt(p[1]);
+            });
+            $('tapText').textContent = txt('play');
+        }
+
+        function render(d) {
+            data = d || {};
+            applyTheme(data.theme);
+            stage.style.setProperty('--fit', data.fit === 'contain' ? 'contain' : 'cover');
+            var n = cams().length;
+            current = Math.min(Math.max(0, parseInt(data.current, 10) || 0), Math.max(0, n - 1));
+            labels();
+            renderChrome();
+            if (visible) {
+                build(false);
+            }
+        }
+
+        // ---- Bedienung --------------------------------------------------------
+
+        $('prev').addEventListener('click', function () { select(current - 1); });
+        $('next').addEventListener('click', function () { select(current + 1); });
+        $('sidePrev').addEventListener('click', function () { select(current - 1); });
+        $('sideNext').addEventListener('click', function () { select(current + 1); });
+        $('reload').addEventListener('click', function () { build(true); });
+        $('tap').addEventListener('click', function () {
+            var c = cam();
+            if (c) {
+                started[current + '|' + c.kind + '|' + c.src] = true;
+                build(true);
+            }
+        });
+        $('fs').addEventListener('click', function () {
+            var doc = document;
+            if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+                (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc);
+            } else if (stage.requestFullscreen) {
+                stage.requestFullscreen().catch(function () {});
+            } else if (stage.webkitRequestFullscreen) {
+                stage.webkitRequestFullscreen();
+            }
+        });
+
+        // Wischen auf der Bühne wechselt die Kamera (bei Bildern; iframes fangen Gesten selbst ab)
+        var touchX = null;
+        stage.addEventListener('touchstart', function (e) {
+            touchX = e.touches.length === 1 ? e.touches[0].clientX : null;
+        }, { passive: true });
+        stage.addEventListener('touchend', function (e) {
+            if (touchX === null || !e.changedTouches.length) {
+                return;
+            }
+            var dx = e.changedTouches[0].clientX - touchX;
+            touchX = null;
+            if (Math.abs(dx) > 50 && cams().length > 1) {
+                select(current + (dx < 0 ? 1 : -1));
+            }
+        }, { passive: true });
+
+        // ---- Sichtbarkeit: Standbilder ruhen, Streams enden nach 10 s ----------
+
+        var inView = true;
+        function updateVisibility() {
+            var v = !document.hidden && inView;
+            if (v === visible) {
+                return;
+            }
+            visible = v;
+            clearTimeout(hideTimer);
+            var c = cam();
+            if (!visible) {
+                clearTimeout(imageTimer);
+                if (data && data.pauseHidden && c && LIVE_KINDS[c.kind]) {
+                    hideTimer = setTimeout(function () {
+                        if (!visible) {
+                            unload();
+                            unloaded = true;
+                        }
+                    }, 10000);
+                }
+                return;
+            }
+            if (!data) {
+                return;
+            }
+            if (unloaded || !shownKey) {
+                build(true);
+            } else if (c && c.kind === 'image') {
+                loadImage(c, shownKey, false);
+            }
+        }
+        document.addEventListener('visibilitychange', updateVisibility);
+        if (window.IntersectionObserver) {
+            new IntersectionObserver(function (entries) {
+                inView = entries[0].isIntersecting;
+                updateVisibility();
+            }).observe(tile);
+        }
+
+        // Wird von IP-Symcon bei UpdateVisualizationValue() aufgerufen
+        window.handleMessage = function (msg) {
+            try {
+                render(typeof msg === 'string' ? JSON.parse(msg) : msg);
+            } catch (e) {
+                console.error('LiveWebCam-Kachel:', e);
+            }
+        };
+
+        var initial = /*INITIAL_DATA*/null;
+        if (initial) {
+            window.handleMessage(initial);
+        }
+    })();
+</script>

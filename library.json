@@ -1,0 +1,12 @@
+{
+    "id": "{FEBA26DC-BBA5-43F7-B323-61119DAC0840}",
+    "author": "Armin Frohwerk",
+    "name": "LiveWebCam",
+    "url": "https://github.com/cfaf2002/LiveWebCam_Symcon",
+    "compatibility": {
+        "version": "8.1"
+    },
+    "version": "1.0",
+    "build": 1,
+    "date": 1791291495
+}
