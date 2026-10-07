@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.3 (Build 7)](https://img.shields.io/badge/Modul--Version-1.3_(Build_7)-informational.svg)](library.json)
+[![Modul-Version 1.4 (Build 8)](https://img.shields.io/badge/Modul--Version-1.4_(Build_8)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -43,7 +43,7 @@ Autor: Armin Frohwerk · Lizenz: MIT
   - **Player-Seite** – Einbettungs-Link eines Webcam-Anbieters (iframe)
   - **Standbild** (JPG/PNG/GIF/WebP) – wird in einstellbarem Takt neu geladen
   - **MJPEG-Stream** – z. B. von IP-Kameras im Heimnetz
-  - **Video** (MP4, HLS) – direkt im Browser, ohne Zusatzbibliothek
+  - **Video** (MP4, HLS) – direkt im Browser, ohne Zusatzbibliothek; HLS (`.m3u8`) nur in Browsern, die es selbst können (Safari, iOS, Android, neuere Chrome/Edge) – sonst zeigt die Kachel einen Hinweis statt endloser Neuversuche
 - „Automatisch erkennen“ ordnet die Adresse selbst einer Art zu
 - **Livestreams werden beobachtet (PeerTube, z. B. livespotting):** Symcon fragt jede Minute bei PeerTube nach. Startet der Betreiber den Stream neu – sonst bleibt der eingebettete Player auf dem letzten Bild stehen –, lädt die Kachel den Player selbst neu; sendet die Kamera gerade nicht, steht „Livestream läuft gerade nicht“ in der Kachel, bis sie wieder sendet. Für andere Quellen lässt sich der Live-Player zusätzlich in festen Abständen neu laden
 - **Prüfung der Player-Seiten:** Nach dem Speichern prüft Symcon im Hintergrund, ob eine eingetragene Seite das Einbetten verbietet (`X-Frame-Options`, `Content-Security-Policy: frame-ancestors`) oder nicht erreichbar ist. Das Formular nennt Kamera und Grund, die Instanz meldet Status 202, und die Kachel zeigt einen Hinweis statt des Verbotssymbols des Browsers
@@ -103,7 +103,7 @@ Danach eine Instanz **LiveWebCam** anlegen.
 - Spielt ein YouTube-Kanal im Datenschutzmodus nicht, den Schalter „YouTube im erweiterten Datenschutzmodus“ ausschalten.
 - Kameras mit `http` in einer Visualisierung über `https` (z. B. Symcon Connect) blockiert der Browser. Standbilder deshalb über Symcon laden; MJPEG und Video brauchen dafür eine `https`-Adresse.
 - Ungültige Einträge stehen mit Grund oben unter **Aktionen**; die übrigen Kameras laufen weiter.
-- Seiten, die das Einbetten verbieten (z. B. `livespotting.tv` oder die Webcam-Seiten der Kurverwaltungen), stehen ebenfalls dort. Geprüft wird nach jedem Speichern, danach höchstens einmal pro Woche; „Player-Seiten jetzt prüfen“ prüft sofort.
+- Seiten, die das Einbetten verbieten (z. B. `livespotting.tv` oder die Webcam-Seiten der Kurverwaltungen), stehen ebenfalls dort. Geprüft wird nach jedem Speichern; danach sieht Symcon täglich nach und prüft Seiten erneut, deren Prüfung älter als eine Woche ist oder am Netz scheiterte; „Player-Seiten jetzt prüfen“ prüft sofort.
 
 ### Kachel
 
@@ -178,6 +178,7 @@ Der Ladetest prüft neben Formular, Kachel und Farbschema die Erkennung aller Qu
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.4 | 8 | 07.10.2026 | Korrekturen: Standbild in der Variable „Live-Bild“ aktualisiert sich im eingestellten Takt (bisher blieb das erste Bild stehen); Kachel holt nach kurzer Unsichtbarkeit Kamerawechsel und fällige Neuversuche nach; HLS-Streams (`.m3u8`) in Browsern ohne HLS-Unterstützung (z. B. Firefox) zeigen einen verständlichen Hinweis statt einer Fehlerschleife; nicht erreichbare Kamera wird 30 s lang sofort gemeldet statt jeden Abruf bis zu 8 s zu blockieren; Player-Seiten werden regelmäßig erneut geprüft; Benutzername mit Doppelpunkt funktioniert; WebHook wird abgemeldet, wenn keine Kamera mehr über Symcon lädt oder die Instanz gelöscht wird |
 | 1.3 | 7 | 07.10.2026 | PeerTube-Livestreams werden beobachtet: nach einem Neustart des Streams (Player blieb bisher auf dem letzten Bild stehen) lädt die Kachel den Player selbst neu; sendet die Kamera nicht, zeigt die Kachel „Livestream läuft gerade nicht“; neue Einstellung „Live-Player neu laden alle … min“ und Befehl `WEBCAM_WatchLive` |
 | 1.2 | 6 | 06.10.2026 | Bereinigt: ungenutzter Kachel-Text und ungenutzte Konstante entfernt; README ohne veraltetes YouTube-Beispiel, mit Hinweisen zu neu gestarteten YouTube-Livestreams und zu Playern, die nur nach Antippen starten |
 | 1.2 | 5 | 06.10.2026 | Prüfung der Player-Seiten: erkennt Seiten, die das Einbetten verbieten (`X-Frame-Options`, `frame-ancestors`) oder nicht erreichbar sind – Hinweis im Formular, Status 202, Kachel zeigt eine Erklärung statt des Verbotssymbols; Knopf „Player-Seiten jetzt prüfen“ und Befehl `WEBCAM_CheckPages` |

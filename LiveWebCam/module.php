@@ -38,6 +38,12 @@ class LiveWebCam extends IPSModuleStrict
     // PeerTube: Zustände eines Livestreams, in denen gerade nichts gesendet wird (wartet / beendet)
     private const PEERTUBE_OFFLINE_STATES = [4, 5];
     private const MAX_CACHE_BYTES = 2 * 1024 * 1024;
+    // Kamera nicht erreichbar: so lange (Sekunden) sofort „nicht erreichbar“ melden, statt bei jedem
+    // Abruf erneut bis zu 8 s auf die Kamera zu warten (blockiert sonst Symcon-Threads)
+    private const FAIL_CACHE_SECONDS = 30;
+    // Player-Seiten: täglich nachsehen, ob eine Prüfung älter als eine Woche ist oder am Netz scheiterte
+    private const PAGE_CHECK_INTERVAL = 86400;
+    private const WEBHOOK_CONTROL = '{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}';
 
     public function Create(): void
     {
@@ -67,6 +73,16 @@ class LiveWebCam extends IPSModuleStrict
         // Livestreams beobachten: Neustart erkennen und den Player in der Kachel neu laden
         $this->RegisterAttributeString('LiveSessions', '{}');
         $this->RegisterTimer('WatchLive', 0, 'WEBCAM_WatchLive($_IPS[\'TARGET\']);');
+    }
+
+    public function Destroy(): void
+    {
+        // Instanz gelöscht: WebHook abmelden, damit kein verwaister Eintrag bleibt
+        if (!IPS_InstanceExists($this->InstanceID)) {
+            $this->UnregisterHook('/hook/webcam' . $this->InstanceID);
+        }
+        // Never delete this line!
+        parent::Destroy();
     }
 
     public function ApplyChanges(): void
@@ -102,12 +118,15 @@ class LiveWebCam extends IPSModuleStrict
             'PRESENTATION' => VARIABLE_PRESENTATION_WEB_CONTENT,
         ], 2, $this->ReadPropertyBoolean('HtmlVariable'));
 
-        // WebHook nur, wenn ein Standbild über Symcon geladen wird
+        // WebHook nur, wenn ein Standbild über Symcon geladen wird – sonst wieder abmelden
+        $hook = false;
         foreach ($cameras as $cam) {
-            if ($cam['proxy']) {
-                $this->RegisterHook('/hook/webcam' . $this->InstanceID);
-                break;
-            }
+            $hook = $hook || $cam['proxy'];
+        }
+        if ($hook) {
+            $this->RegisterHook('/hook/webcam' . $this->InstanceID);
+        } else {
+            $this->UnregisterHook('/hook/webcam' . $this->InstanceID);
         }
 
         $current = min(max(0, $this->ReadAttributeInteger('Current')), max(0, count($cameras) - 1));
@@ -119,7 +138,12 @@ class LiveWebCam extends IPSModuleStrict
         }
 
         // Player-Seiten im Hintergrund prüfen (nicht im ApplyChanges, damit das Speichern nicht wartet)
-        $this->SetTimerInterval('CheckPages', $this->PagesToCheck($cameras) !== [] ? 2000 : 0);
+        // danach täglich nachsehen (nur veraltete oder am Netz gescheiterte Prüfungen werden wiederholt)
+        $pages = false;
+        foreach ($cameras as $cam) {
+            $pages = $pages || $cam['kind'] === 'page';
+        }
+        $this->SetTimerInterval('CheckPages', $this->PagesToCheck($cameras) !== [] ? 2000 : ($pages ? self::PAGE_CHECK_INTERVAL * 1000 : 0));
         $watch = false;
         foreach ($cameras as $cam) {
             $watch = $watch || $cam['api'] !== '';
@@ -371,6 +395,8 @@ class LiveWebCam extends IPSModuleStrict
         }
         $checks = array_intersect_key($checks, $used);
         $this->WriteAttributeString('PageChecks', (string) json_encode($checks));
+        // regelmäßig wiederholen: veraltete Prüfungen erneuern, am Netz gescheiterte nachholen
+        $this->SetTimerInterval('CheckPages', $used !== [] ? self::PAGE_CHECK_INTERVAL * 1000 : 0);
         $this->UpdateStatus();
         $this->UpdateOutputs();
         return $this->PageProblems() === [];
@@ -601,6 +627,8 @@ class LiveWebCam extends IPSModuleStrict
                 'offline'     => $this->Translate('Live stream is currently not running'),
                 'offlineHint' => $this->Translate('The picture returns automatically as soon as the camera is broadcasting again.'),
                 'blockedHint' => $this->Translate('The provider does not allow it. Open it in the browser or enter the player link in the instance.'),
+                'hls'         => $this->Translate('This browser cannot play HLS streams (.m3u8)'),
+                'hlsHint'     => $this->Translate('Safari, iOS and Android play them directly. Open the camera in the browser or use the provider’s player link.'),
             ],
         ];
     }
@@ -620,6 +648,12 @@ class LiveWebCam extends IPSModuleStrict
         $style = 'display:block;width:100%;height:' . $height . 'px;border:0;object-fit:' . $fit . ';background:#000';
         switch ($cam['kind']) {
             case 'image':
+                // Standbild im eingestellten Takt neu laden (Zeitstempel gegen den Browser-Cache), nur wenn sichtbar
+                $id = 'webcam' . $this->InstanceID;
+                $refresh = max(2, min(3600, $this->ReadPropertyInteger('ImageRefresh'))) * 1000;
+                return '<img src="' . $src . '" id="' . $id . '" alt="' . $title . '" style="' . $style . '">'
+                    . '<script>(function(){var i=document.getElementById("' . $id . '");if(!i){return;}var b=i.getAttribute("src");'
+                    . 'setInterval(function(){if(!document.hidden){i.src=b+(b.indexOf("?")<0?"?":"&")+"_="+Date.now();}},' . $refresh . ');})();</script>';
             case 'mjpeg':
                 return '<img src="' . $src . '" alt="' . $title . '" style="' . $style . '">';
             case 'video':
@@ -925,6 +959,9 @@ class LiveWebCam extends IPSModuleStrict
         $maxAge = max(1, min(3600, $this->ReadPropertyInteger('ImageRefresh')) - 1);
         $key = 'Image' . $index . '_' . substr(hash('sha256', $url), 0, 12);
         $cached = json_decode($this->GetBuffer($key), true);
+        if (is_array($cached) && ($cached['failed'] ?? false) && (time() - (int) ($cached['time'] ?? 0)) < min($maxAge, self::FAIL_CACHE_SECONDS)) {
+            return null; // kürzlich nicht erreichbar: nicht erneut warten
+        }
         if (is_array($cached) && (time() - (int) ($cached['time'] ?? 0)) < $maxAge) {
             $body = base64_decode((string) ($cached['body'] ?? ''), true);
             if (is_string($body) && $body !== '') {
@@ -932,7 +969,9 @@ class LiveWebCam extends IPSModuleStrict
             }
         }
         $image = $this->FetchImage($url);
-        if ($image !== null && strlen($image['body']) <= self::MAX_CACHE_BYTES) {
+        if ($image === null) {
+            $this->SetBuffer($key, (string) json_encode(['time' => time(), 'failed' => true]));
+        } elseif (strlen($image['body']) <= self::MAX_CACHE_BYTES) {
             $this->SetBuffer($key, (string) json_encode(['time' => time(), 'type' => $image['type'], 'body' => base64_encode($image['body'])]));
         }
         return $image;
@@ -970,7 +1009,9 @@ class LiveWebCam extends IPSModuleStrict
         if ($parts['user'] !== '' || $parts['pass'] !== '') {
             // Basic oder Digest – je nachdem, was die Kamera verlangt
             $options[CURLOPT_HTTPAUTH] = CURLAUTH_ANY;
-            $options[CURLOPT_USERPWD] = $parts['user'] . ':' . $parts['pass'];
+            // getrennt übergeben: ein Doppelpunkt im Benutzernamen würde bei CURLOPT_USERPWD falsch geteilt
+            $options[CURLOPT_USERNAME] = $parts['user'];
+            $options[CURLOPT_PASSWORD] = $parts['pass'];
             // Zugangsdaten nicht an eine andere Adresse weitergeben
             $options[CURLOPT_UNRESTRICTED_AUTH] = false;
         }
@@ -990,6 +1031,30 @@ class LiveWebCam extends IPSModuleStrict
             return null;
         }
         return ['type' => $type, 'body' => $body];
+    }
+
+    /**
+     * Entfernt den WebHook dieser Instanz aus dem WebHook Control (RegisterHook kennt kein Gegenstück).
+     */
+    private function UnregisterHook(string $path): void
+    {
+        $ids = @IPS_GetInstanceListByModuleID(self::WEBHOOK_CONTROL);
+        if (!is_array($ids) || $ids === []) {
+            return;
+        }
+        $hooks = json_decode((string) @IPS_GetProperty($ids[0], 'Hooks'), true);
+        if (!is_array($hooks)) {
+            return;
+        }
+        $name = preg_replace('#^/hook/#', '', $path);
+        $kept = array_values(array_filter($hooks, function ($hook) use ($name): bool {
+            return !is_array($hook) || (int) ($hook['TargetID'] ?? 0) !== $this->InstanceID
+                || preg_replace('#^/hook/#', '', (string) ($hook['Hook'] ?? '')) !== $name;
+        }));
+        if (count($kept) !== count($hooks)) {
+            IPS_SetProperty($ids[0], 'Hooks', (string) json_encode($kept));
+            IPS_ApplyChanges($ids[0]);
+        }
     }
 
     private static function ImageType(string $body): ?string

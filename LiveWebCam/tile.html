@@ -298,6 +298,7 @@
         var imageTimer = 0;
         var retryTimer = 0;
         var reloadTimer = 0;
+        var pendingBuild = false; // Neuversuch/Neuladen fiel in eine unsichtbare Phase → beim Sichtbarwerden nachholen
 
         var LIVE_KINDS = { youtube: 1, peertube: 1, page: 1, mjpeg: 1, video: 1 };
 
@@ -416,10 +417,28 @@
             message(txt('unreachable'), txt('retry'));
             clearTimeout(retryTimer);
             retryTimer = setTimeout(function () {
-                if (shownKey === key && visible) {
-                    build(true);
+                if (shownKey === key) {
+                    rebuildWhenVisible();
                 }
             }, 15000);
+        }
+
+        function rebuildWhenVisible() {
+            if (visible) {
+                build(true);
+            } else {
+                pendingBuild = true;
+            }
+        }
+
+        // HLS (.m3u8) spielen nur Browser mit eingebauter Unterstützung (Safari, iOS, Android, neuere Chrome/Edge)
+        function isHls(src) {
+            return /\.m3u8$/i.test(String(src).split(/[?#]/)[0]);
+        }
+
+        function canPlayHls() {
+            var v = document.createElement('video');
+            return !!(v.canPlayType && (v.canPlayType('application/vnd.apple.mpegurl') || v.canPlayType('application/x-mpegurl')));
         }
 
         function camKey(c) {
@@ -434,6 +453,7 @@
                 return;
             }
             unload();
+            pendingBuild = false;
             message('');
             $('tap').hidden = true;
             if (!c) {
@@ -462,8 +482,8 @@
             // Optional: Live-Player regelmäßig neu laden (gegen hängende Streams ohne Neustart-Meldung)
             if (data.liveReload > 0 && LIVE_KINDS[c.kind] && c.kind !== 'mjpeg') {
                 reloadTimer = setTimeout(function () {
-                    if (shownKey === key && visible) {
-                        build(true);
+                    if (shownKey === key) {
+                        rebuildWhenVisible();
                     }
                 }, data.liveReload * 60000);
             }
@@ -481,6 +501,9 @@
                 img.onerror = function () { streamError(key); };
                 img.src = c.src;
                 media.appendChild(img);
+            } else if (c.kind === 'video' && isHls(c.src) && !canPlayHls()) {
+                // Kein Neuversuch: Der Browser kann HLS grundsätzlich nicht, eine Schleife hilft hier nicht
+                message(txt('hls'), txt('hlsHint'));
             } else if (c.kind === 'video') {
                 var v = document.createElement('video');
                 v.muted = true;
@@ -647,8 +670,11 @@
             if (!data) {
                 return;
             }
-            if (unloaded || !shownKey) {
+            if (unloaded || !shownKey || pendingBuild) {
                 build(true);
+            } else if (camKey(c) !== shownKey) {
+                // während der Unsichtbarkeit wurde die Kamera gewechselt oder der Livestream neu gestartet
+                build(false);
             } else if (c && c.kind === 'image') {
                 loadImage(c, shownKey, false);
             }

@@ -82,6 +82,8 @@
             "Reload live player every (0 = off)": "Live-Player neu laden alle (0 = aus)",
             "PeerTube live streams (e.g. livespotting) are watched automatically: if the stream is restarted, the tile reloads the player by itself.": "PeerTube-Livestreams (z. B. livespotting) werden automatisch beobachtet: Startet der Betreiber den Stream neu, lädt die Kachel den Player selbst neu.",
             "Live stream is currently not running": "Livestream läuft gerade nicht",
+            "This browser cannot play HLS streams (.m3u8)": "Dieser Browser kann HLS-Streams (.m3u8) nicht abspielen",
+            "Safari, iOS and Android play them directly. Open the camera in the browser or use the provider’s player link.": "Safari, iOS und Android spielen sie direkt ab. Kamera im Browser öffnen oder den Player-Link des Anbieters verwenden.",
             "The picture returns automatically as soon as the camera is broadcasting again.": "Das Bild kommt automatisch zurück, sobald die Kamera wieder sendet."
         }
     }
