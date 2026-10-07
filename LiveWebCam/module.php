@@ -34,6 +34,9 @@ class LiveWebCam extends IPSModuleStrict
 
     private const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
     private const PAGE_CHECK_MAX_AGE = 7 * 86400;
+    private const LIVE_WATCH_SECONDS = 60;
+    // PeerTube: Zustände eines Livestreams, in denen gerade nichts gesendet wird (wartet / beendet)
+    private const PEERTUBE_OFFLINE_STATES = [4, 5];
     private const MAX_CACHE_BYTES = 2 * 1024 * 1024;
 
     public function Create(): void
@@ -52,6 +55,7 @@ class LiveWebCam extends IPSModuleStrict
         $this->RegisterPropertyBoolean('PrivacyMode', true);
         $this->RegisterPropertyBoolean('HtmlVariable', false);
         $this->RegisterPropertyInteger('HtmlHeight', 360);
+        $this->RegisterPropertyInteger('LiveReload', 0);
 
         $this->RegisterAttributeInteger('Current', 0);
         $this->RegisterAttributeString('Token', '');
@@ -60,6 +64,9 @@ class LiveWebCam extends IPSModuleStrict
         $this->RegisterAttributeString('PageChecks', '{}');
 
         $this->RegisterTimer('CheckPages', 0, 'WEBCAM_CheckPages($_IPS[\'TARGET\']);');
+        // Livestreams beobachten: Neustart erkennen und den Player in der Kachel neu laden
+        $this->RegisterAttributeString('LiveSessions', '{}');
+        $this->RegisterTimer('WatchLive', 0, 'WEBCAM_WatchLive($_IPS[\'TARGET\']);');
     }
 
     public function ApplyChanges(): void
@@ -113,6 +120,11 @@ class LiveWebCam extends IPSModuleStrict
 
         // Player-Seiten im Hintergrund prüfen (nicht im ApplyChanges, damit das Speichern nicht wartet)
         $this->SetTimerInterval('CheckPages', $this->PagesToCheck($cameras) !== [] ? 2000 : 0);
+        $watch = false;
+        foreach ($cameras as $cam) {
+            $watch = $watch || $cam['api'] !== '';
+        }
+        $this->SetTimerInterval('WatchLive', $watch ? self::LIVE_WATCH_SECONDS * 1000 : 0);
 
         $this->UpdateOutputs();
     }
@@ -215,6 +227,15 @@ class LiveWebCam extends IPSModuleStrict
         return (bool) $this->CheckPagesRun();
     }
 
+    /**
+     * Fragt bei PeerTube nach, ob ein Livestream neu gestartet wurde oder gerade nicht sendet
+     * (läuft automatisch jede Minute). true = Abfrage für alle Livestreams erfolgreich.
+     */
+    public function WatchLive(): bool
+    {
+        return (bool) $this->WatchLiveRun();
+    }
+
     /** Liefert die Adresse zum Öffnen der aktuellen Kamera im Browser (leer bei Kameras mit Zugangsdaten). */
     public function GetCameraLink(): string
     {
@@ -261,6 +282,73 @@ class LiveWebCam extends IPSModuleStrict
     // ------------------------------------------------------------------
     // Interne Abläufe
     // ------------------------------------------------------------------
+
+    private function WatchLiveRun(): bool
+    {
+        [$cameras] = $this->Cameras();
+        $old = json_decode($this->ReadAttributeString('LiveSessions'), true) ?: [];
+        $sessions = [];
+        $ok = true;
+        foreach ($cameras as $cam) {
+            if ($cam['api'] === '' || isset($sessions[$cam['src']])) {
+                continue;
+            }
+            $video = $this->FetchJson($cam['api']);
+            if ($video === null) {
+                // Abfrage fehlgeschlagen: letzten Stand behalten, damit der Player nicht unnötig neu lädt
+                $ok = false;
+                if (isset($old[$cam['src']])) {
+                    $sessions[$cam['src']] = $old[$cam['src']];
+                }
+                continue;
+            }
+            $state = (int) ($video['state']['id'] ?? 0);
+            $offline = (bool) ($video['isLive'] ?? false) && in_array($state, self::PEERTUBE_OFFLINE_STATES, true);
+            // Neue Sendung = neue Wiedergabeliste bzw. neuer Zeitstempel; daran erkennt die Kachel den Neustart
+            $playlist = (string) ($video['streamingPlaylists'][0]['playlistUrl'] ?? '');
+            $sessions[$cam['src']] = [
+                'id'      => substr(hash('sha256', $state . '|' . $playlist . '|' . (string) ($video['updatedAt'] ?? '')), 0, 12),
+                'offline' => $offline,
+            ];
+            if (($old[$cam['src']] ?? null) !== $sessions[$cam['src']]) {
+                $this->SendDebug('Live', $cam['name'] . ': ' . ($offline ? 'offline' : 'session ' . $sessions[$cam['src']]['id']), 0);
+            }
+        }
+        $this->WriteAttributeString('LiveSessions', (string) json_encode($sessions));
+        $this->UpdateOutputs();
+        return $ok;
+    }
+
+    /** Holt kleines JSON per HTTP(S) (PeerTube-API) – mit Zeitlimit, Größengrenze und Zertifikatsprüfung. */
+    private function FetchJson(string $url): ?array
+    {
+        $ch = curl_init($url);
+        $options = [
+            CURLOPT_RETURNTRANSFER   => true,
+            CURLOPT_FOLLOWLOCATION   => false,
+            CURLOPT_CONNECTTIMEOUT   => 4,
+            CURLOPT_TIMEOUT          => 6,
+            CURLOPT_SSL_VERIFYPEER   => true,
+            CURLOPT_SSL_VERIFYHOST   => 2,
+            CURLOPT_USERAGENT        => 'IP-Symcon LiveWebCam',
+            CURLOPT_ENCODING         => '',
+            CURLOPT_HTTPHEADER       => ['Accept: application/json'],
+            CURLOPT_NOPROGRESS       => false,
+            CURLOPT_XFERINFOFUNCTION => static fn ($ch, int $total, int $now): int => $now > 256 * 1024 ? 1 : 0,
+        ];
+        if (defined('CURLOPT_PROTOCOLS_STR')) {
+            $options[CURLOPT_PROTOCOLS_STR] = 'http,https';
+        }
+        curl_setopt_array($ch, $options);
+        $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        if (!is_string($body) || $code !== 200) {
+            $this->SendDebug('Live', $url . ' → ' . (curl_error($ch) ?: 'HTTP ' . $code), 0);
+            return null;
+        }
+        $data = json_decode($body, true);
+        return is_array($data) ? $data : null;
+    }
 
     private function CheckPagesRun(): bool
     {
@@ -465,9 +553,11 @@ class LiveWebCam extends IPSModuleStrict
     {
         [$cameras, $errors] = $this->Cameras();
         $checks = json_decode($this->ReadAttributeString('PageChecks'), true) ?: [];
+        $sessions = json_decode($this->ReadAttributeString('LiveSessions'), true) ?: [];
         $list = [];
         foreach ($cameras as $cam) {
             $check = $cam['kind'] === 'page' ? ($checks[$cam['src']] ?? null) : null;
+            $live = $cam['api'] !== '' ? ($sessions[$cam['src']] ?? null) : null;
             $list[] = [
                 'name'    => $cam['name'],
                 'kind'    => $cam['kind'],
@@ -476,6 +566,9 @@ class LiveWebCam extends IPSModuleStrict
                 'link'    => $cam['link'],
                 // nur „verbietet Einbetten“ – ist eine Seite für Symcon nicht erreichbar, versucht es die Kachel trotzdem
                 'blocked' => is_array($check) && ($check['state'] ?? '') === 'blocked',
+                // ändert sich bei einem Neustart des Livestreams → Kachel lädt den Player neu
+                'session' => is_array($live) ? (string) $live['id'] : '',
+                'offline' => is_array($live) && $live['offline'],
             ];
         }
         $error = '';
@@ -490,6 +583,7 @@ class LiveWebCam extends IPSModuleStrict
             'pauseHidden' => $this->ReadPropertyBoolean('PauseHidden'),
             'bar'         => $this->ReadPropertyBoolean('ShowBar'),
             'refresh'     => max(2, min(3600, $this->ReadPropertyInteger('ImageRefresh'))),
+            'liveReload'  => max(0, min(1440, $this->ReadPropertyInteger('LiveReload'))),
             'current'     => $this->ReadAttributeInteger('Current'),
             'cams'        => $list,
             'error'       => $error,
@@ -504,6 +598,8 @@ class LiveWebCam extends IPSModuleStrict
                 'open'        => $this->Translate('Open in browser'),
                 'reload'      => $this->Translate('Reload'),
                 'blocked'     => $this->Translate('This page cannot be embedded'),
+                'offline'     => $this->Translate('Live stream is currently not running'),
+                'offlineHint' => $this->Translate('The picture returns automatically as soon as the camera is broadcasting again.'),
                 'blockedHint' => $this->Translate('The provider does not allow it. Open it in the browser or enter the player link in the instance.'),
             ],
         ];
@@ -571,6 +667,7 @@ class LiveWebCam extends IPSModuleStrict
             }
             $result['name'] = mb_substr($name, 0, 60);
             $result['auto'] ??= $result['src'];
+            $result['api'] ??= '';
             $cameras[] = $result;
         }
         // Adresse des WebHooks erst jetzt einsetzen: Nummer = Position in der Liste der aktiven Kameras
@@ -641,6 +738,7 @@ class LiveWebCam extends IPSModuleStrict
             $src = $video['origin'] . '/videos/embed/' . $video['id'] . '?title=0&warningTitle=0&peertubeLink=0&p2p=0';
             return [
                 'kind'  => 'peertube',
+                'api'   => $video['origin'] . '/api/v1/videos/' . $video['id'],
                 'src'   => $src,
                 'auto'  => $src . '&autoplay=1&muted=1',
                 'link'  => $video['origin'] . '/w/' . $video['id'],

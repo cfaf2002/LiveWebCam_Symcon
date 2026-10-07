@@ -78,7 +78,11 @@
             "the page does not allow embedding": "die Seite verbietet das Einbetten",
             "the page only allows embedding on certain sites (%s)": "die Seite erlaubt das Einbetten nur auf bestimmten Seiten (%s)",
             "This page cannot be embedded": "Diese Seite lässt sich nicht einbetten",
-            "The provider does not allow it. Open it in the browser or enter the player link in the instance.": "Der Anbieter erlaubt es nicht. Im Browser öffnen oder in der Instanz den Player-Link eintragen."
+            "The provider does not allow it. Open it in the browser or enter the player link in the instance.": "Der Anbieter erlaubt es nicht. Im Browser öffnen oder in der Instanz den Player-Link eintragen.",
+            "Reload live player every (0 = off)": "Live-Player neu laden alle (0 = aus)",
+            "PeerTube live streams (e.g. livespotting) are watched automatically: if the stream is restarted, the tile reloads the player by itself.": "PeerTube-Livestreams (z. B. livespotting) werden automatisch beobachtet: Startet der Betreiber den Stream neu, lädt die Kachel den Player selbst neu.",
+            "Live stream is currently not running": "Livestream läuft gerade nicht",
+            "The picture returns automatically as soon as the camera is broadcasting again.": "Das Bild kommt automatisch zurück, sobald die Kamera wieder sendet."
         }
     }
 }

@@ -80,6 +80,11 @@ switch ($path) {
         break;
     case '/ok':
         break;
+    case '/api/v1/videos/AbCdEfGhIjKlMnOpQrStUv':
+        // nachgebaute PeerTube-API: Inhalt steht in live.json und wird vom Test geändert
+        header('Content-Type: application/json');
+        echo file_get_contents(__DIR__ . '/live.json');
+        return true;
     default:
         return false;
 }
@@ -253,6 +258,36 @@ foreach (glob(__DIR__ . '/../*/module.json') as $moduleJson) {
             ['Active' => true, 'Name' => 'OK', 'Type' => 3, 'Source' => $base . '/ok', 'Proxy' => 0],
         ]);
         ok(WEBCAM_CheckPages($id) === true && IPS_GetInstance($id)['InstanceStatus'] === 102, 'Nach Korrektur wieder Status 102');
+
+        // PeerTube-Livestream: Neustart und Sendepause erkennen
+        $liveFile = $docroot . '/live.json';
+        $live = static function (int $state, string $playlist) use ($liveFile): void {
+            file_put_contents($liveFile, json_encode(['isLive' => true, 'state' => ['id' => $state], 'updatedAt' => '2026-10-07T11:46:13Z',
+                'streamingPlaylists' => [['playlistUrl' => 'https://x/hls/' . $playlist . '/master.m3u8']]]));
+        };
+        $live(1, 'aaaa');
+        setCameras($id, [
+            ['Active' => true, 'Name' => 'Elbe', 'Type' => 0, 'Source' => $base . '/w/AbCdEfGhIjKlMnOpQrStUv', 'Proxy' => 0],
+            ['Active' => true, 'Name' => 'Bild', 'Type' => 4, 'Source' => 'https://example.org/b.jpg', 'Proxy' => 0],
+        ]);
+        ok(tileData($id)['cams'][0]['kind'] === 'peertube', 'PeerTube auf eigenem Server erkannt');
+        ok(WEBCAM_WatchLive($id) === true, 'WEBCAM_WatchLive fragt die PeerTube-API ab');
+        $first = tileData($id)['cams'][0];
+        ok($first['session'] !== '' && $first['offline'] === false && tileData($id)['cams'][1]['session'] === '', 'Sitzung nur für PeerTube, sendet');
+        WEBCAM_WatchLive($id);
+        ok(tileData($id)['cams'][0]['session'] === $first['session'], 'Ohne Neustart bleibt die Sitzung gleich (kein unnötiges Neuladen)');
+        $live(1, 'bbbb');
+        WEBCAM_WatchLive($id);
+        ok(tileData($id)['cams'][0]['session'] !== $first['session'], 'Neustart des Streams → neue Sitzung, Kachel lädt den Player neu');
+        $live(4, 'bbbb');
+        WEBCAM_WatchLive($id);
+        ok(tileData($id)['cams'][0]['offline'] === true, 'Stream wartet → „Livestream läuft gerade nicht“');
+        unlink($liveFile);
+        $before = tileData($id)['cams'][0];
+        ok(WEBCAM_WatchLive($id) === false && tileData($id)['cams'][0] === $before, 'API nicht erreichbar → letzter Stand bleibt');
+        IPS_SetProperty($id, 'LiveReload', 15);
+        IPS_ApplyChanges($id);
+        ok(tileData($id)['liveReload'] === 15, 'Einstellung „Live-Player neu laden alle“ geht an die Kachel');
 
         // WebHook
         setCameras($id, [

@@ -297,6 +297,7 @@
         var hideTimer = 0;
         var imageTimer = 0;
         var retryTimer = 0;
+        var reloadTimer = 0;
 
         var LIVE_KINDS = { youtube: 1, peertube: 1, page: 1, mjpeg: 1, video: 1 };
 
@@ -331,8 +332,10 @@
         function stopTimers() {
             clearTimeout(imageTimer);
             clearTimeout(retryTimer);
+            clearTimeout(reloadTimer);
             imageTimer = 0;
             retryTimer = 0;
+            reloadTimer = 0;
         }
 
         // ---- Player ----------------------------------------------------------
@@ -419,9 +422,14 @@
             }, 15000);
         }
 
+        function camKey(c) {
+            // „session“ ändert sich, wenn der Livestream neu gestartet wurde → Player neu laden
+            return c ? current + '|' + c.kind + '|' + c.src + '|' + (c.session || '') + '|' + (c.offline ? 0 : 1) : '';
+        }
+
         function build(force) {
             var c = cam();
-            var key = c ? current + '|' + c.kind + '|' + c.src : '';
+            var key = camKey(c);
             if (!force && key === shownKey) {
                 return;
             }
@@ -445,6 +453,19 @@
             if (c.blocked) {
                 message(txt('blocked'), txt('blockedHint'));
                 return;
+            }
+            // Livestream sendet gerade nicht: Hinweis, der Player kommt mit der nächsten Meldung des Moduls
+            if (c.offline) {
+                message(txt('offline'), txt('offlineHint'));
+                return;
+            }
+            // Optional: Live-Player regelmäßig neu laden (gegen hängende Streams ohne Neustart-Meldung)
+            if (data.liveReload > 0 && LIVE_KINDS[c.kind] && c.kind !== 'mjpeg') {
+                reloadTimer = setTimeout(function () {
+                    if (shownKey === key && visible) {
+                        build(true);
+                    }
+                }, data.liveReload * 60000);
             }
 
             if (c.kind === 'youtube' || c.kind === 'peertube') {
@@ -569,7 +590,7 @@
         $('tap').addEventListener('click', function () {
             var c = cam();
             if (c) {
-                started[current + '|' + c.kind + '|' + c.src] = true;
+                started[camKey(c)] = true;
                 build(true);
             }
         });

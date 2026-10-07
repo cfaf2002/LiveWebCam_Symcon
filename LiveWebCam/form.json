@@ -193,6 +193,18 @@
                     "type": "CheckBox",
                     "name": "PauseHidden",
                     "caption": "Stop stream when the tile is not visible"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "LiveReload",
+                    "caption": "Reload live player every (0 = off)",
+                    "suffix": "min",
+                    "minimum": 0,
+                    "maximum": 1440
+                },
+                {
+                    "type": "Label",
+                    "caption": "PeerTube live streams (e.g. livespotting) are watched automatically: if the stream is restarted, the tile reloads the player by itself."
                 }
             ]
         },
