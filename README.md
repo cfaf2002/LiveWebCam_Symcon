@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.1](https://img.shields.io/badge/IP--Symcon-ab_8.1-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.4 (Build 8)](https://img.shields.io/badge/Modul--Version-1.4_(Build_8)-informational.svg)](library.json)
+[![Modul-Version 1.4 (Build 9)](https://img.shields.io/badge/Modul--Version-1.4_(Build_9)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/LiveWebCam_Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -178,6 +178,7 @@ Der Ladetest prüft neben Formular, Kachel und Farbschema die Erkennung aller Qu
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 1.4 | 9 | 08.10.2026 | **Behoben:** Modul ließ sich in Symcon nicht laden („Modul der Instanz wurde nicht korrekt geladen“, Kacheln „Internal Server Error“) – eine eigene Methode `UnregisterHook` kollidierte mit der gleichnamigen Methode der Basisklasse (Symcon ≥ 8.2); jetzt wird die von Symcon genutzt. WebHook wird ohne „/hook/“ angemeldet, wie Symcon es verlangt. Ladetest kennt `UnregisterHook`, damit so etwas künftig auffällt |
 | 1.4 | 8 | 07.10.2026 | Korrekturen: Standbild in der Variable „Live-Bild“ aktualisiert sich im eingestellten Takt (bisher blieb das erste Bild stehen); Kachel holt nach kurzer Unsichtbarkeit Kamerawechsel und fällige Neuversuche nach; HLS-Streams (`.m3u8`) in Browsern ohne HLS-Unterstützung (z. B. Firefox) zeigen einen verständlichen Hinweis statt einer Fehlerschleife; nicht erreichbare Kamera wird 30 s lang sofort gemeldet statt jeden Abruf bis zu 8 s zu blockieren; Player-Seiten werden regelmäßig erneut geprüft; Benutzername mit Doppelpunkt funktioniert; WebHook wird abgemeldet, wenn keine Kamera mehr über Symcon lädt oder die Instanz gelöscht wird |
 | 1.3 | 7 | 07.10.2026 | PeerTube-Livestreams werden beobachtet: nach einem Neustart des Streams (Player blieb bisher auf dem letzten Bild stehen) lädt die Kachel den Player selbst neu; sendet die Kamera nicht, zeigt die Kachel „Livestream läuft gerade nicht“; neue Einstellung „Live-Player neu laden alle … min“ und Befehl `WEBCAM_WatchLive` |
 | 1.2 | 6 | 06.10.2026 | Bereinigt: ungenutzter Kachel-Text und ungenutzte Konstante entfernt; README ohne veraltetes YouTube-Beispiel, mit Hinweisen zu neu gestarteten YouTube-Livestreams und zu Playern, die nur nach Antippen starten |

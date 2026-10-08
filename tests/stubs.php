@@ -43,6 +43,15 @@ foreach (glob($stubs . '/*.php') as $file) {
             "$1\n        \$GLOBALS['registeredHooks'][] = \$HookPath;\n        return true;\n    }",
             $code
         );
+        // Die Stubs kennen UnregisterHook (Symcon ≥ 8.2) noch nicht. Nachrüsten, damit eine gleichnamige eigene
+        // Methode im Modul hier genauso scheitert wie in Symcon („Access level … must be protected“).
+        if (!str_contains($code, 'function UnregisterHook')) {
+            $code = str_replace(
+                "    protected function RegisterOAuth(",
+                "    protected function UnregisterHook(string \$HookPath): bool\n    {\n        \$GLOBALS['unregisteredHooks'][] = \$HookPath;\n        return true;\n    }\n\n    protected function RegisterOAuth(",
+                $code
+            );
+        }
     }
     file_put_contents($copy . '/' . basename($file), $code);
 }
@@ -188,7 +197,7 @@ foreach (glob(__DIR__ . '/../*/module.json') as $moduleJson) {
         ok(str_starts_with($garden['src'], '/hook/webcam' . $id . '?cam=4&t='), 'Standbild mit Zugangsdaten über WebHook');
         ok(!str_contains(json_encode($data), 'geheim') && !str_contains($tile . WEBCAM_GetVisualizationTile($id), 'geheim'), 'Zugangsdaten kommen nie in der Kachel an');
         ok($garden['link'] === '', 'Kein Browser-Link bei Zugangsdaten');
-        ok(in_array('/hook/webcam' . $id, $GLOBALS['registeredHooks'] ?? [], true), 'WebHook registriert');
+        ok(in_array('webcam' . $id, $GLOBALS['registeredHooks'] ?? [], true), 'WebHook registriert (Adresse ohne „/hook/“, wie Symcon es verlangt)');
         ok(count($data['cams']) === 10, 'Inaktive Kamera ausgeblendet');
         $peertube = $data['cams'][8];
         ok($peertube['src'] === 'https://peertube.livespotting.com/videos/embed/qLZ7kfvg1PJjGPXDsBv9iy?title=0&warningTitle=0&peertubeLink=0&p2p=0', 'PeerTube-Link → Einbettungs-Player');

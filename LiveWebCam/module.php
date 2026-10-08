@@ -43,7 +43,8 @@ class LiveWebCam extends IPSModuleStrict
     private const FAIL_CACHE_SECONDS = 30;
     // Player-Seiten: täglich nachsehen, ob eine Prüfung älter als eine Woche ist oder am Netz scheiterte
     private const PAGE_CHECK_INTERVAL = 86400;
-    private const WEBHOOK_CONTROL = '{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}';
+    // Name des WebHooks; nie eine eigene Methode RegisterHook/UnregisterHook anlegen – die gehören zur Basisklasse
+    private const HOOK_PREFIX = 'webcam';
 
     public function Create(): void
     {
@@ -73,16 +74,6 @@ class LiveWebCam extends IPSModuleStrict
         // Livestreams beobachten: Neustart erkennen und den Player in der Kachel neu laden
         $this->RegisterAttributeString('LiveSessions', '{}');
         $this->RegisterTimer('WatchLive', 0, 'WEBCAM_WatchLive($_IPS[\'TARGET\']);');
-    }
-
-    public function Destroy(): void
-    {
-        // Instanz gelöscht: WebHook abmelden, damit kein verwaister Eintrag bleibt
-        if (!IPS_InstanceExists($this->InstanceID)) {
-            $this->UnregisterHook('/hook/webcam' . $this->InstanceID);
-        }
-        // Never delete this line!
-        parent::Destroy();
     }
 
     public function ApplyChanges(): void
@@ -123,10 +114,12 @@ class LiveWebCam extends IPSModuleStrict
         foreach ($cameras as $cam) {
             $hook = $hook || $cam['proxy'];
         }
+        // Adresse ohne „/hook/“ – Symcon stellt es selbst voran (erreichbar unter /hook/webcam<ID>)
         if ($hook) {
-            $this->RegisterHook('/hook/webcam' . $this->InstanceID);
-        } else {
-            $this->UnregisterHook('/hook/webcam' . $this->InstanceID);
+            $this->RegisterHook(self::HOOK_PREFIX . $this->InstanceID);
+        } elseif (method_exists($this, 'UnregisterHook')) {
+            // UnregisterHook gehört ab Symcon 8.2 zur Basisklasse; vorher bleibt der Hook bis zum Neustart (ist nicht dauerhaft)
+            $this->UnregisterHook(self::HOOK_PREFIX . $this->InstanceID);
         }
 
         $current = min(max(0, $this->ReadAttributeInteger('Current')), max(0, count($cameras) - 1));
@@ -707,7 +700,7 @@ class LiveWebCam extends IPSModuleStrict
         // Adresse des WebHooks erst jetzt einsetzen: Nummer = Position in der Liste der aktiven Kameras
         foreach ($cameras as $i => $cam) {
             if ($cam['proxy']) {
-                $cameras[$i]['src'] = $cameras[$i]['auto'] = '/hook/webcam' . $this->InstanceID . '?cam=' . $i . '&t=' . $this->ReadAttributeString('Token');
+                $cameras[$i]['src'] = $cameras[$i]['auto'] = '/hook/' . self::HOOK_PREFIX . $this->InstanceID . '?cam=' . $i . '&t=' . $this->ReadAttributeString('Token');
             }
         }
         return [$cameras, $errors];
@@ -1033,29 +1026,6 @@ class LiveWebCam extends IPSModuleStrict
         return ['type' => $type, 'body' => $body];
     }
 
-    /**
-     * Entfernt den WebHook dieser Instanz aus dem WebHook Control (RegisterHook kennt kein Gegenstück).
-     */
-    private function UnregisterHook(string $path): void
-    {
-        $ids = @IPS_GetInstanceListByModuleID(self::WEBHOOK_CONTROL);
-        if (!is_array($ids) || $ids === []) {
-            return;
-        }
-        $hooks = json_decode((string) @IPS_GetProperty($ids[0], 'Hooks'), true);
-        if (!is_array($hooks)) {
-            return;
-        }
-        $name = preg_replace('#^/hook/#', '', $path);
-        $kept = array_values(array_filter($hooks, function ($hook) use ($name): bool {
-            return !is_array($hook) || (int) ($hook['TargetID'] ?? 0) !== $this->InstanceID
-                || preg_replace('#^/hook/#', '', (string) ($hook['Hook'] ?? '')) !== $name;
-        }));
-        if (count($kept) !== count($hooks)) {
-            IPS_SetProperty($ids[0], 'Hooks', (string) json_encode($kept));
-            IPS_ApplyChanges($ids[0]);
-        }
-    }
 
     private static function ImageType(string $body): ?string
     {
